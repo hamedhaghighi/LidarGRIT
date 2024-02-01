@@ -187,7 +187,7 @@ def main(runner_cfg_path=None):
     lidar = lidar_B if is_two_dataset else lidar_ref
     visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
     g_steps = 0
-    min_fid = 10000
+    min_rmse = 10000
     if cl_args.ref_dataset_name == 'kitti':
         ignore_label = [0, 2, 3, 4, 6, 5, 7, 8, 10, 12, 16]
     elif cl_args.ref_dataset_name == 'semanticPOSS':
@@ -358,14 +358,14 @@ def main(runner_cfg_path=None):
             if isinstance(v, list):
                 data_dict[k] = torch.cat(v, dim=0)[: N]
         scores = {}
-        scores.update(compute_swd(data_dict["synth-2d"], data_dict["real-2d"]))
-        scores["jsd"] = compute_jsd(data_dict["synth-3d"] / 2.0, data_dict["real-3d"] / 2.0)
-        scores.update(compute_cov_mmd_1nna(data_dict["synth-3d"], data_dict["real-3d"], 512, ("cd",)))
+        # scores.update(compute_swd(data_dict["synth-2d"], data_dict["real-2d"]))
+        # scores["jsd"] = compute_jsd(data_dict["synth-3d"] / 2.0, data_dict["real-3d"] / 2.0)
+        # scores.update(compute_cov_mmd_1nna(data_dict["synth-3d"], data_dict["real-3d"], 512, ("cd",)))
         torch.cuda.empty_cache()
         if fid_cls is not None and len(fid_samples) > 0:
             scores['fid'] = fid_cls.fid_score(torch.cat(fid_samples, dim=0))
-        if scores["fid"] < min_fid and opt.training.isTrain:
-            min_fid = scores["fid"]
+        if losses["depth/rmse"] < min_rmse and opt.training.isTrain:
+            min_rmse = losses["depth/rmse"]
             model.save_networks('best')
         visualizer.plot_current_losses('unsupervised_metrics', epoch, scores, g_steps)
         visualizer.print_current_losses('unsupervised_metrics', epoch, e_steps, scores, val_tq)

@@ -687,7 +687,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'resnet_6blocks':
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6, out_ch=out_ch, no_antialias=no_antialias, no_antialias_up=no_antialias_up, encode_layer=encode_layer, have_cond_modality=have_cond_mod)
     elif netG == 'unet_64':
-        net = UnetGenerator_2(input_nc, output_nc, 6, ngf, norm_layer=norm_layer, use_dropout=use_dropout, same_kernel_size=False, out_ch=out_ch, encode_layer=encode_layer)
+        net = UnetGenerator_2(input_nc, output_nc, 6, ngf, norm_layer=norm_layer, use_dropout=use_dropout, same_kernel_size=True, out_ch=out_ch, encode_layer=encode_layer)
     elif netG == 'unet_128':
         net = UnetGenerator_2(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, same_kernel_size=same_kernel_size, out_ch=out_ch, encode_layer=encode_layer)
     elif netG == 'unet_256':
