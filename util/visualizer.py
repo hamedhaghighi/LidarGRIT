@@ -131,7 +131,7 @@ class Visualizer():
         grid = grid.cpu().numpy()  # CHW
         if color:
             grid = grid[0]  # HW
-            if cmap != 'gray' and 'inv' in tag:
+            if cmap != 'gray' and 'depth' in tag:
                 grid *= 2 if ds_name == 'carla' or ds_name == 'kitti' else 2
             if ds_name == 'semanticPOSS' and 'reflectance' in tag:
                 grid *=5
@@ -157,12 +157,12 @@ class Visualizer():
                 if 'points' in k:
                     points = flatten(v)
                     # inv = visuals['real_label' if k == 'real_points' else 'synth_label']
-                    inv = visuals[k.replace('points', 'inv')]
+                    depth = visuals[k.replace('points', 'depth')]
                     # r = 1 / (inv + 0.1)
                     # r = (r - r.min()) / (r.max()-r.min()) 
                     image_list = []
                     for i in range(points.shape[0]):
-                        _, gen_pts_img = visualize_tensor(to_np(points[i]), to_np(inv[i]) * 2, k, dataset_name)
+                        _, gen_pts_img = visualize_tensor(to_np(points[i]), to_np(depth[i]) * 2, k, dataset_name)
                         # _, gen_pts_img = visualize_tensor(to_np(points[i]), to_np((inv[i].permute(1,2,0).flatten(0, 1))/255.0))
                         image_list.append(torch.from_numpy(np.asarray(gen_pts_img)))
                     visuals[k] = torch.stack(image_list, dim=0).permute(0, 3, 1, 2)

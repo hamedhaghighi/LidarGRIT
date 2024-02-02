@@ -36,8 +36,8 @@ class Pix2PixAEModel(BaseModel):
         opt_t = opt.training
         self.eval_metrics = ['cd', 'depth_accuracies', 'depth_errors'] 
         
-        if 'inv' in opt_m.modality_B:
-            self.visual_names.extend(['synth_inv', 'synth_mask'])
+        if 'depth' in opt_m.modality_B:
+            self.visual_names.extend(['synth_depth', 'synth_mask'])
         if 'reflectance' in opt_m.modality_B:
             self.visual_names.extend(['real_reflectance', 'synth_reflectance'])
             self.eval_metrics.append('reflectance_errors')
@@ -98,14 +98,29 @@ class Pix2PixAEModel(BaseModel):
 
         return flat_diff
     
+    def calculate_neigbor_angles(self, depth):
+        # Assuming depth1 and depth2 are torch tensors with shape (B, C, H, W)
+        # Calculate the differences in depth
+        points = self.lidar.depth_to_xyz(tanh_to_sigmoid(depth))
+        # Calculate the differences in x and y
+        r_shifted = torch.roll(points, shifts=(0, 1), dims=(2, 3))
+        l_shifted = torch.roll(points, shifts=(0, -1), dims=(2, 3))
+        x_diff, y_diff = r_shifted[:, 0, :, :] - points[:, 0, :, :], r_shifted[:, 1, :, :] - points[:, 1, :, :]
+        r_angle = torch.atan2(y_diff, x_diff)
+        x_diff, y_diff = l_shifted[:, 0, :, :] - points[:, 0, :, :], l_shifted[:, 1, :, :] - points[:, 1, :, :]
+        l_angle = torch.atan2(y_diff, x_diff)
+        return torch.stack((r_angle, l_angle), dim=1)
+        # Calculate the angle
+
+    
     def calc_loss_G(self):
         """Calculate GAN and L1 loss for the generator"""
         # First, G(A) should fake the discriminator
         # Second, G(A) = B
         self.loss_G_L1 = self.criterionL1(self.fake_B, self.real_A)
-        fake_diff = self.calculate_neighbor_distances(self.fake_B)
-        real_diff = self.calculate_neighbor_distances(self.real_A)
-        self.loss_G_nd = self.criterionL1(fake_diff, real_diff)
+        fake_angle = self.calculate_neigbor_angles(self.fake_B)
+        real_angle = self.calculate_neigbor_angles(self.real_A)
+        self.loss_G_nd = self.criterionL1(fake_angle, real_angle)
         self.loss_mask_bce = self.BCEwithLogit(self.synth_mask_logit, self.real_mask) if self.opt.model.lambda_mask > 0.0 else 0.0
         
         self.loss_G = self.loss_G_L1 * self.opt.model.lambda_L1\

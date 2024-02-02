@@ -132,6 +132,13 @@ class Coordinate(nn.Module):
     def denormalize_minmax(tensor, vmin: float, vmax: float):
         return tensor * (vmax - vmin) + vmin
 
+
+    def normalize_depth(self, tensor):
+        return self.normalize_minmax(tensor, self.min_depth, self.max_depth)
+    
+    def denormalize_depth(self, tensor):
+        return self.denormalize_minmax(tensor, self.min_depth, self.max_depth)
+    
     def invert_depth(self, norm_depth):
         # depth to inverse depth
         depth = self.denormalize_minmax(norm_depth, self.min_depth, self.max_depth)
@@ -171,6 +178,12 @@ class Coordinate(nn.Module):
         depth = depth * (self.max_depth - self.min_depth) + self.min_depth
         depth /= self.max_depth
         depth *= valid
+        points = self.pol_to_xyz(depth)
+        return points
+    
+    def depth_to_xyz(self, depth, tol=1e-8): # depth [0, 1]
+        depth = depth * (self.max_depth - self.min_depth) + self.min_depth
+        depth /= self.max_depth
         points = self.pol_to_xyz(depth)
         return points
 

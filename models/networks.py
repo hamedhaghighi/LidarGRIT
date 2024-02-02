@@ -19,22 +19,22 @@ def disentangle_output(output, out_ch, gumbel, out_modality):
     if 'mask' in output_dict:
         output_dict['mask_logit'] = output_dict['mask']
         mask = output_dict['mask'] = gumbel(output_dict['mask'])
-        if 'inv' in output_dict:
-            inv = torch.tanh(output_dict['inv'])
-            output_dict['inv_orig'] = inv
-            output_dict['inv'] = mask * inv + (1 - mask) * -1
+        if 'depth' in output_dict:
+            depth = torch.tanh(output_dict['depth'])
+            output_dict['depth_orig'] = depth
+            output_dict['depth'] = mask * depth + (1 - mask) * -1
         if 'reflectance' in output_dict:
             output_dict['reflectance_orig'] = output_dict['reflectance']
             r = torch.tanh(output_dict['reflectance'])
             output_dict['reflectance'] = mask * r + (1 - mask) * -1
     else:
-        # if 'inv' in output_dict:
-        #     inv = torch.tanh(output_dict['inv'])
-        #     output_dict['inv'] = inv
-        # if 'reflectance' in output_dict:
-        #     r = torch.tanh(output_dict['reflectance'])
-        #     output_dict['reflectance'] = r
-        output_dict['mask'] = 1 - (output_dict['inv'] <= -0.9).float()
+        if 'depth' in output_dict:
+            depth = torch.tanh(output_dict['depth'])
+            output_dict['depth'] = depth
+        if 'reflectance' in output_dict:
+            r = torch.tanh(output_dict['reflectance'])
+            output_dict['reflectance'] = r
+        output_dict['mask'] = 1 - (output_dict['depth'] <= -0.9).float()
     out_list = []
     for m in out_modality:
         out_list.append(output_dict[m])
@@ -687,11 +687,11 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'resnet_6blocks':
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6, out_ch=out_ch, no_antialias=no_antialias, no_antialias_up=no_antialias_up, encode_layer=encode_layer, have_cond_modality=have_cond_mod)
     elif netG == 'unet_64':
-        net = UnetGenerator_2(input_nc, output_nc, 6, ngf, norm_layer=norm_layer, use_dropout=use_dropout, same_kernel_size=True, out_ch=out_ch, encode_layer=encode_layer)
+        net = UnetGenerator(input_nc, output_nc, 6, ngf, norm_layer=norm_layer, use_dropout=use_dropout, same_kernel_size=True, out_ch=out_ch, encode_layer=encode_layer)
     elif netG == 'unet_128':
-        net = UnetGenerator_2(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, same_kernel_size=same_kernel_size, out_ch=out_ch, encode_layer=encode_layer)
+        net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, same_kernel_size=same_kernel_size, out_ch=out_ch, encode_layer=encode_layer)
     elif netG == 'unet_256':
-        net = UnetGenerator_2(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, out_ch=out_ch, same_kernel_size=same_kernel_size, encode_layer=encode_layer)
+        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, out_ch=out_ch, same_kernel_size=same_kernel_size, encode_layer=encode_layer)
     elif netG == 'stylegan2':
         net = StyleGAN2Generator(input_nc, output_nc, ngf, use_dropout=use_dropout, opt=opt)
     elif netG == 'smallstylegan2':
@@ -1130,7 +1130,7 @@ class UnetGenerator(nn.Module):
                 l += [nn.Dropout(0.5)]
             model += [nn.Sequential(*l)]
         for i in range(3,0,-1):
-            model += [nn.Sequential(*[uprelu, nn.ConvTranspose2d(ngf*(2**i)*2, ngf*(2**(i-1)), kernel_size=4, stride=2, padding=1, bias=use_bias), norm_layer(ngf*(2**i))])]
+            model += [nn.Sequential(*[uprelu, nn.ConvTranspose2d(ngf*(2**i)*2, ngf*(2**(i-1)), kernel_size=4, stride=2, padding=1, bias=use_bias), norm_layer(ngf*(2**(i-1)))])]
         model += [nn.Sequential(*[uprelu, nn.ConvTranspose2d(ngf * 2, output_nc, kernel_size=k, stride=s, padding=(1, 1))])]
         if encode_layer is not None:
             model = model[:encode_layer]

@@ -75,10 +75,10 @@ def prepare_synth_for_seg(model, lidar, tag='synth'):
         synth_reflectance = getattr(model, tag + '_reflectance')
     if hasattr(model, tag + '_mask'):
         synth_mask = getattr(model, tag + '_mask')
-    if hasattr(model, tag + '_inv'):
-        synth_inv = getattr(model, tag + '_inv')
-    synth_depth = lidar.revert_depth(tanh_to_sigmoid(synth_inv), norm=False)
-    synth_points = lidar.inv_to_xyz(tanh_to_sigmoid(synth_inv)) * lidar.max_depth
+    if hasattr(model, tag + '_depth'):
+        synth_depth = getattr(model, tag + '_depth')
+    synth_depth = lidar.denormalize_depth(tanh_to_sigmoid(synth_depth))
+    synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
     synth_reflectance = tanh_to_sigmoid(synth_reflectance)
     vol = torch.cat([synth_depth, synth_points, synth_reflectance, synth_mask], dim=1)
     return vol
@@ -93,11 +93,12 @@ def cat_modality(data_dict, modality):
     
 def fetch_reals(data, lidar, device, norm_label=False):
     mask = data["mask"].float()
-    inv = lidar.invert_depth(data["depth"])
-    inv = sigmoid_to_tanh(inv)  # [-1,1]
-    inv = mask * inv + (1 - mask) * -1
+    # depth = lidar.normalize_depth(data["depth"])
+    depth = data["depth"]   # [0,1]
+    depth = sigmoid_to_tanh(depth)  # [-1,1]
+    depth = mask * depth + (1 - mask) * -1
     
-    batch = {'inv': inv, 'mask': mask, 'depth': data['depth'], 'points': data['points']}
+    batch = {'mask': mask, 'depth': depth, 'points': data['points']}
     if 'lwo' in data:
         batch['lwo'] = data['lwo']
     if 'reflectance' in data:
@@ -215,10 +216,10 @@ def cycle(iterable):
 def postprocess(synth, lidar, tol=1e-8, data_maps=None, dataset_name='kitti', norm_label=False):
     out = {}
     for key, value in synth.items():
-        if 'inv' in key:
+        if 'depth' in key:
             out[key] = tanh_to_sigmoid(value).clamp_(0, 1)
-            if not 'inv_orig' in key:
-                out[key.replace('inv', 'points')] = lidar.inv_to_xyz(out[key], tol)
+            if not 'depth_orig' in key:
+                out[key.replace('depth', 'points')] = lidar.depth_to_xyz(out[key], tol)
         elif "reflectance" in key:
             out[key] = tanh_to_sigmoid(value).clamp_(0, 1)
         elif 'label' in key:

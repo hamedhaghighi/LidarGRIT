@@ -52,9 +52,9 @@ class BaseModel(ABC):
             self.visual_names.extend(['real_B_mask'])
         if 'mask' in self.opt.model.out_ch:
             self.visual_names.extend(['real_mask', 'synth_mask', 'synth_mask_logit'])
-            self.visual_names.append('synth_inv_orig')
+            self.visual_names.append('synth_depth_orig')
             self.visual_names.append('synth_reflectance_orig')
-        self.visual_names = [s.replace('depth','inv') for s in self.visual_names]
+        self.visual_names = [s for s in self.visual_names]
         self.optimizers = []
         self.image_paths = []
         self.crterionSSIM = SSIM()
@@ -102,16 +102,16 @@ class BaseModel(ABC):
     
     def calc_supervised_metrics(self, no_inv, lidar_A, lidar_B):
         self.forward()
-        synth_inv = self.real_inv * self.synth_mask if no_inv else self.synth_inv
-        points_gen = lidar_B.inv_to_xyz(tanh_to_sigmoid(synth_inv))
+        synth_depth = self.real_depth * self.synth_mask if no_inv else self.synth_depth
+        points_gen = lidar_B.depth_to_xyz(tanh_to_sigmoid(synth_depth))
         points_gen = flatten(points_gen)
         points_ref = flatten(self.real_points)
-        depth_ref = lidar_A.revert_depth(tanh_to_sigmoid(self.real_inv), norm=False)
-        depth_gen = lidar_B.revert_depth(tanh_to_sigmoid(synth_inv), norm=False)
+        depth_ref = lidar_A.denormalize_depth(tanh_to_sigmoid(self.real_depth))
+        depth_gen = lidar_B.denormalize_depth(tanh_to_sigmoid(synth_depth))
         self.cd = compute_cd(points_ref, points_gen).mean().item()
         accuracies = compute_depth_accuracy(depth_ref, depth_gen)
         self.depth_accuracies = {'depth/' + k: v.mean().item() for k ,v in accuracies.items()}
-        errors = compute_depth_error(depth_ref, depth_gen)
+        errors = compute_depth_error(depth_ref, depth_gen, self.real_mask)
         self.depth_errors = {'depth/' + k: v.mean().item() for k ,v in errors.items()}
         if 'reflectance' in self.opt.model.modality_B:
             reflectance_ref = tanh_to_sigmoid(self.real_reflectance) + 1e-8
