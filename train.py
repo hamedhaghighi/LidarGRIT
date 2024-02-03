@@ -76,7 +76,7 @@ def check_exp_exists(opt, cfg_args):
         opt_t.name = 'test'
     else:
         if 'pix2pix' in opt_m.name:
-            opt_t.name = f'pix2pix_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}' \
+            opt_t.name = f'pix2pix_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}_L_nd_{opt_m.lambda_nd}' \
                 + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}' \
                 
     exp_dir = os.path.join(opt_t.checkpoints_dir, opt_t.name)
