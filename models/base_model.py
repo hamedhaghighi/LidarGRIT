@@ -100,9 +100,9 @@ class BaseModel(ABC):
     def set_seg_model(self, model):
         pass
     
-    def calc_supervised_metrics(self, no_inv, lidar_A, lidar_B):
+    def calc_supervised_metrics(self, no_inv, lidar_A, lidar_B, is_transformer=False):
         self.forward()
-        synth_depth = self.real_depth * self.synth_mask if no_inv else self.synth_depth
+        synth_depth = self.real_depth * self.synth_mask if no_inv else (self.rec_synth_depth if is_transformer else self.synth_depth)
         points_gen = lidar_B.depth_to_xyz(tanh_to_sigmoid(synth_depth))
         points_gen = flatten(points_gen)
         points_ref = flatten(self.real_points)
@@ -115,7 +115,7 @@ class BaseModel(ABC):
         self.depth_errors = {'depth/' + k: v.mean().item() for k ,v in errors.items()}
         if 'reflectance' in self.opt.model.modality_B:
             reflectance_ref = tanh_to_sigmoid(self.real_reflectance) + 1e-8
-            reflectance_gen = tanh_to_sigmoid(self.synth_reflectance) + 1e-8
+            reflectance_gen = tanh_to_sigmoid(self.rec_synth_reflectance if is_transformer else self.synth_reflectance) + 1e-8
             errors = compute_depth_error(reflectance_ref, reflectance_gen)
             self.reflectance_errors = {'reflectance/' + k: v.mean().item() for k ,v in errors.items()}
             self.reflectance_ssim = self.crterionSSIM(self.real_reflectance, self.synth_reflectance, torch.ones_like(self.real_reflectance))
@@ -242,7 +242,7 @@ class BaseModel(ABC):
             # print(f'cannot find the load path {load_path}')
             raise Exception(f'cannot find the load path {load_path}')
         else:
-            state_dict = torch.load(load_path)
+            state_dict = torch.load(load_path, map_location='cpu')
             for name in self.model_names:
                 if isinstance(name, str):
                     net = getattr(self, 'net' + name)

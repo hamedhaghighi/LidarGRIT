@@ -3,44 +3,13 @@ import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
-from util import m2ch
+from util import disentangle_output
 import numpy as np
 import torch.nn.functional as F
 from .stylegan_networks import StyleGAN2Discriminator, StyleGAN2Generator, TileStyleGAN2Discriminator
 ###############################################################################
 # Helper Functions
 ###############################################################################
-def disentangle_output(output, out_ch, gumbel, out_modality):
-    output_dict = {}
-    i = 0
-    for k in out_ch:
-        output_dict[k] = output[:, i : i + m2ch[k]]
-        i = i + m2ch[k]
-    if 'mask' in output_dict:
-        output_dict['mask_logit'] = output_dict['mask']
-        mask = output_dict['mask'] = gumbel(output_dict['mask'])
-        if 'depth' in output_dict:
-            depth = torch.tanh(output_dict['depth'])
-            output_dict['depth_orig'] = depth
-            output_dict['depth'] = mask * depth + (1 - mask) * -1
-        if 'reflectance' in output_dict:
-            output_dict['reflectance_orig'] = output_dict['reflectance']
-            r = torch.tanh(output_dict['reflectance'])
-            output_dict['reflectance'] = mask * r + (1 - mask) * -1
-    else:
-        if 'depth' in output_dict:
-            depth = torch.tanh(output_dict['depth'])
-            output_dict['depth'] = depth
-        if 'reflectance' in output_dict:
-            r = torch.tanh(output_dict['reflectance'])
-            output_dict['reflectance'] = r
-        output_dict['mask'] = 1 - (output_dict['depth'] <= -0.9).float()
-    out_list = []
-    for m in out_modality:
-        out_list.append(output_dict[m])
-    out = torch.cat(out_list, dim=1)
-    return output_dict, out
-
 
 def get_filter(filt_size=3):
     if(filt_size == 1):

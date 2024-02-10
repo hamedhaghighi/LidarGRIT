@@ -77,7 +77,13 @@ def check_exp_exists(opt, cfg_args):
     else:
         if 'pix2pix' in opt_m.name:
             opt_t.name = f'pix2pix_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}_L_nd_{opt_m.lambda_nd}' \
-                + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}' \
+                + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
+        elif 'vqgan' in opt_m.name:
+            opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}_L_nd_{opt_m.lambda_nd}' \
+                + f'_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
+        elif 'transformer' in opt_m.name:
+            opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}' \
+                + f'_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
                 
     exp_dir = os.path.join(opt_t.checkpoints_dir, opt_t.name)
     if not opt_t.continue_train and opt_t.isTrain:
@@ -131,7 +137,7 @@ def main(runner_cfg_path=None):
         opt.training.n_epochs = 1
 
     check_exp_exists(opt, cl_args)
-
+    is_transformer = 'transformer' in opt.model.name
     opt.training.gpu_ids = [cl_args.gpu]
     device = torch.device('cuda:{}'.format(opt.training.gpu_ids[0])) if opt.training.gpu_ids else torch.device('cpu') 
     ds_cfg = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{opt.dataset.dataset_A.name}_cfg.yml', 'r')))
@@ -243,7 +249,7 @@ def main(runner_cfg_path=None):
             data = next(val_dl_iter)
             model.set_input(data)
             with torch.no_grad():
-                model.calc_supervised_metrics(cl_args.no_inv, lidar_A, lidar)
+                model.calc_supervised_metrics(cl_args.no_inv, lidar_A, lidar, is_transformer)
             
             fetched_data = fetch_reals(data, lidar_A, device)
             if cl_args.on_input:
@@ -263,10 +269,8 @@ def main(runner_cfg_path=None):
                     synth_depth = model.synth_depth
                 else:
                     synth_depth = fetched_data['depth'] * synth_mask
-            
             data_dict['synth-2d'].append(synth_depth)
             data_dict['synth-3d'].append(depth_to_xyz(synth_depth, lidar))
-
             if fid_cls is not None and len(fid_samples) < cl_args.n_fid and hasattr(model, 'synth_reflectance'):
                 synth_depth = tanh_to_sigmoid(synth_depth)
                 synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
@@ -313,9 +317,9 @@ def main(runner_cfg_path=None):
             if isinstance(v, list):
                 data_dict[k] = torch.cat(v, dim=0)[: N]
         scores = {}
-        # scores.update(compute_swd(data_dict["synth-2d"], data_dict["real-2d"]))
-        # scores["jsd"] = compute_jsd(data_dict["synth-3d"] / 2.0, data_dict["real-3d"] / 2.0)
-        # scores.update(compute_cov_mmd_1nna(data_dict["synth-3d"], data_dict["real-3d"], 512, ("cd",)))
+        scores.update(compute_swd(data_dict["synth-2d"], data_dict["real-2d"]))
+        scores["jsd"] = compute_jsd(data_dict["synth-3d"] / 2.0, data_dict["real-3d"] / 2.0)
+        scores.update(compute_cov_mmd_1nna(data_dict["synth-3d"], data_dict["real-3d"], 512, ("cd",)))
         torch.cuda.empty_cache()
         if fid_cls is not None and len(fid_samples) > 0:
             scores['fid'] = fid_cls.fid_score(torch.cat(fid_samples, dim=0))

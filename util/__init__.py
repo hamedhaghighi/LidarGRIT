@@ -15,6 +15,48 @@ import os
 m2ch = {'label':1, 'rgb':3, 'reflectance':1, 'mask':1, 'inv':1, 'depth':1}
 
 
+def class_to_dict(obj):
+    members = [attr for attr in dir(obj) if not callable(getattr(obj, attr)) and not attr.startswith("__")]
+    dict_ = {}
+    for k in members:
+        v = getattr(obj, k)
+        if not isinstance(v, (int, float, str, bool, list, tuple, dict, np.ndarray, torch.Tensor, type(None))):
+            dict_[k] = class_to_dict(v)
+        else:
+            dict_[k] = v
+    return dict_
+
+def disentangle_output(output, out_ch, gumbel, out_modality):
+    output_dict = {}
+    i = 0
+    for k in out_ch:
+        output_dict[k] = output[:, i : i + m2ch[k]]
+        i = i + m2ch[k]
+    if 'mask' in output_dict:
+        output_dict['mask_logit'] = output_dict['mask']
+        mask = output_dict['mask'] = gumbel(output_dict['mask'])
+        if 'depth' in output_dict:
+            depth = torch.tanh(output_dict['depth'])
+            output_dict['depth_orig'] = depth
+            output_dict['depth'] = mask * depth + (1 - mask) * -1
+        if 'reflectance' in output_dict:
+            output_dict['reflectance_orig'] = output_dict['reflectance']
+            r = torch.tanh(output_dict['reflectance'])
+            output_dict['reflectance'] = mask * r + (1 - mask) * -1
+    else:
+        if 'depth' in output_dict:
+            depth = torch.tanh(output_dict['depth'])
+            output_dict['depth'] = depth
+        if 'reflectance' in output_dict:
+            r = torch.tanh(output_dict['reflectance'])
+            output_dict['reflectance'] = r
+        output_dict['mask'] = 1 - (output_dict['depth'] <= -0.9).float()
+    out_list = []
+    for m in out_modality:
+        out_list.append(output_dict[m])
+    out = torch.cat(out_list, dim=1)
+    return output_dict, out
+
 def make_class_from_dict(opt):
     if any([isinstance(k, int) for k in opt.keys()]):
         return opt
