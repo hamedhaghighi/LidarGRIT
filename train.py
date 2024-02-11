@@ -79,8 +79,9 @@ def check_exp_exists(opt, cfg_args):
             opt_t.name = f'pix2pix_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}_L_nd_{opt_m.lambda_nd}' \
                 + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
         elif 'vqgan' in opt_m.name:
-            opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}_L_nd_{opt_m.lambda_nd}' \
-                + f'_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
+            losscfg = opt_m.vqmodel.lossconfig.params
+            opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_nd_{losscfg.lambda_nd}_L_disc_{losscfg.disc_weight}' \
+                + f'_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}'
         elif 'transformer' in opt_m.name:
             opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}' \
                 + f'_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
@@ -222,7 +223,7 @@ def main(runner_cfg_path=None):
                     losses = model.get_current_losses()
                     visualizer.print_current_losses('train', epoch, e_steps, losses, train_tq)
                     visualizer.plot_current_losses('train', epoch, losses, g_steps)
-
+                    visualizer.writer.add_scalar('lr', model.schedulers[0].get_last_lr()[0], g_steps)
                 if g_steps % opt.training.save_latest_freq == 0:   # cache our latest model every <save_latest_freq> iterations
                     train_tq.write('saving the latest model (epoch %d, total_iters %d)' % (epoch, g_steps))
                     model.save_networks('latest')

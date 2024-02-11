@@ -95,13 +95,10 @@ class VQLPIPSWithDiscriminator(nn.Module):
             else:
                 p_loss = torch.tensor([0.0])
 
-            if self.lambda_nd > 0.0:
-                real_angle = self.calculate_neigbor_angles(points_inputs)
-                fake_angle = self.calculate_neigbor_angles(points_rec)
-                nd_loss = torch.abs(real_angle - fake_angle)
-                rec_loss = rec_loss + self.lambda_nd * nd_loss
-            else:
-                nd_loss = torch.tensor([0.0])
+            real_angle = self.calculate_neigbor_angles(points_inputs)
+            fake_angle = self.calculate_neigbor_angles(points_rec)
+            nd_loss = torch.abs(real_angle - fake_angle)
+            rec_loss = rec_loss + self.lambda_nd * nd_loss
 
             nll_loss = rec_loss
             #nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
