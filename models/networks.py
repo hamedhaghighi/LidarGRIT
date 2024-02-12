@@ -191,7 +191,15 @@ def get_scheduler(optimizer, opt):
     For other schedulers (step, plateau, and cosine), we use the default PyTorch schedulers.
     See https://pytorch.org/docs/stable/optim.html for more details.
     """
-    if opt.lr_policy == 'linear':
+    if opt.lr_policy == 'identity':
+        class IdentityScheduler(lr_scheduler._LRScheduler):
+            def __init__(self, optimizer, last_epoch=-1):
+                super(IdentityScheduler, self).__init__(optimizer, last_epoch)
+
+            def get_lr(self):
+                return [group['lr'] for group in self.optimizer.param_groups]
+        scheduler = IdentityScheduler(optimizer)
+    elif opt.lr_policy == 'linear':
         def lambda_rule(epoch):
             lr_l = 1.0 - max(0, epoch - opt.epoch_decay) / float(opt.n_epochs - opt.epoch_decay + 1)
             return lr_l
