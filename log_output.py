@@ -32,14 +32,6 @@ def cycle(iterable):
         for x in iterable:
             yield x
 
-def inv_to_xyz(inv, lidar, tol=1e-8):
-    inv = tanh_to_sigmoid(inv).clamp_(0, 1)
-    xyz = lidar.inv_to_xyz(inv, tol)
-    xyz = xyz.flatten(2).transpose(1, 2)  # (B,N,3)
-    xyz = downsample_point_clouds(xyz, 512)
-    return xyz
-
-
 
 class M_parser():
     def __init__(self, cfg_path, data_dir, data_dir_B, load):
@@ -84,21 +76,15 @@ def check_exp_exists(opt, cfg_args):
         opt_t.name = 'test'
     else:
         if 'pix2pix' in opt_m.name:
-            opt_t.name = f'pix2pix_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}' \
-                + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}' \
-                    + f'_netG_{opt_m.netG}_netD_{opt_m.netD}_batch_size_{opt_t.batch_size}_finesize_{opt_d.img_prop.finesize}'
-        elif 'cycle_gan' in opt_m.name:
-            opt_t.name = f'cycle_gan_modality_A_{modality_A}_out_ch_{out_ch}_lambda_A_{opt_m.lambda_A}_lambda_B_{opt_m.lambda_B}_lambda_idt_{opt_m.lambda_idt}' \
-                + f'_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}' \
-                    + f'_netG_{opt_m.netG}_netD_{opt_m.netD}_batch_size_{opt_t.batch_size}_finesize_{opt_d.img_prop.finesize}'
-        elif 'gc_gan' in opt_m.name:
-            opt_t.name = f'gc_gan_modality_A_{modality_A}_out_ch_{out_ch}_lambda_idt_{opt_m.identity}_lambda_AB_{opt_m.lambda_AB}' \
-                + f'_lambda_gc_{opt_m.lambda_gc}_lambda_G_{opt_m.lambda_G}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}' \
-                    + f'_netG_{opt_m.netG}_netD_{opt_m.netD}_batch_size_{opt_t.batch_size}_finesize_{opt_d.img_prop.finesize}'
-        elif 'cut' in opt_m.name:
-            opt_t.name = f'cut_modality_A_{modality_A}_out_ch_{out_ch}_cond_modality_{cond_modality}_lambda_GAN_{opt_m.lambda_GAN}' \
-                + f'_lambda_NCE_{opt_m.lambda_NCE}_lambda_NCE_feat_{opt_m.lambda_NCE_feat}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}' \
-                    + f'_netG_{opt_m.netG}_netD_{opt_m.netD}_netF_{opt_m.netF}_n_layers_D_{opt_m.n_layers_D}_batch_size_{opt_t.batch_size}_finesize_{opt_d.img_prop.finesize}_lr_decay_iters_{opt_t.lr_decay_iters}'
+            opt_t.name = f'pix2pix_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}_L_nd_{opt_m.lambda_nd}' \
+                + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
+        elif 'vqgan' in opt_m.name:
+            losscfg = opt_m.vqmodel.lossconfig.params
+            opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_nd_{losscfg.lambda_nd}_L_disc_{losscfg.disc_weight}' \
+                + f'_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}'
+        elif 'transformer' in opt_m.name:
+            opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}' \
+                + f'_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
         
     exp_dir = os.path.join(opt_t.checkpoints_dir, opt_t.name)
     if not opt_t.continue_train and opt_t.isTrain:
@@ -165,50 +151,36 @@ def main(runner_cfg_path=None):
     if not opt.training.isTrain:
         opt.training.n_epochs = 1
     check_exp_exists(opt, cl_args)
-    is_two_dataset = False
-    if hasattr(opt.dataset, 'dataset_B'):
-        is_two_dataset = True
     device = torch.device('cuda:{}'.format(opt.training.gpu_ids[0])) if opt.training.gpu_ids else torch.device('cpu') 
     ds_cfg = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{opt.dataset.dataset_A.name}_cfg.yml', 'r')))
     if not hasattr(opt.dataset.dataset_A, 'data_dir'):
         opt.dataset.dataset_A.data_dir = ds_cfg.data_dir
-    if is_two_dataset:
-        if not hasattr(opt.dataset.dataset_B, 'data_dir'):
-            ds_cfg_B = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{opt.dataset.dataset_B.name}_cfg.yml', 'r')))
-            opt.dataset.dataset_B.data_dir = ds_cfg_B.data_dir
     ds_cfg_ref = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{cl_args.ref_dataset_name}_cfg.yml', 'r')))
     lidar_A = LiDAR(
     cfg=ds_cfg,
     height=opt.dataset.dataset_A.img_prop.height,
     width=opt.dataset.dataset_A.img_prop.width).to(device)
-    lidar_B = LiDAR(
-    cfg=ds_cfg_B,
-    height=opt.dataset.dataset_B.img_prop.height,
-    width=opt.dataset.dataset_B.img_prop.width,
-   ).to(device) if is_two_dataset else None
     lidar_ref = LiDAR(
     cfg=ds_cfg_ref,
     height=opt.dataset.dataset_A.img_prop.height,
     width=opt.dataset.dataset_A.img_prop.width).to(device)
-    lidar = lidar_B if is_two_dataset else lidar_ref
+    lidar = lidar_ref
     visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
     g_steps = 0
     ignore_label = [0, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16]
 
     is_ref_semposs = cl_args.ref_dataset_name == 'semanticPOSS'
     val_dl, val_dataset = get_data_loader(opt, split, opt.training.batch_size, shuffle=False, is_ref_semposs=is_ref_semposs)
-    data_list = val_dataset.datasetA.datalist if is_two_dataset else val_dataset.datalist
+    data_list = val_dataset.datalist
     dataset_A_datalist = np.array(data_list)
     dataset_A_selected_idx = []
     for seq, id in zip(seqs, ids):
         pcl_file_path = os.path.join(ds_cfg.data_dir, 'sequences', str(seq).zfill(2), 'velodyne', str(id).zfill(6)+('.bin' if ds_cfg.is_raw else '.npy'))
         dataset_A_selected_idx.append(np.where(dataset_A_datalist == pcl_file_path)[0][0])
     
-    # test_dl, test_dataset = get_data_loader(opt, 'test', opt.training.batch_size, dataset_name=cl_args.ref_dataset_name, two_dataset_enabled=False)
     with torch.no_grad():
         seg_model = Segmentator(dataset_name=cl_args.ref_dataset_name if cl_args.seg_cfg_path == '' else 'synth', cfg_path=cl_args.seg_cfg_path).to(device)
-        # seg_model = Segmentator(dataset_name=cl_args.ref_dataset_name).to(device)
-    model = create_model(opt, lidar_A, lidar_B)      # create a model given opt.model and other options
+    model = create_model(opt, lidar_A, None)      # create a model given opt.model and other options
     model.set_seg_model(seg_model)               # regular setup: load and print networks; create schedulers
     ## initilisation of the model for netF in cut
     val_dl_iter = iter(val_dl); data = next(val_dl_iter); model.data_dependent_initialize(data)
@@ -227,25 +199,17 @@ def main(runner_cfg_path=None):
     val_tq = tqdm.tqdm(total=len(dataset_A_selected_idx), desc='val_Iter', position=5)
     for i, idx in enumerate(dataset_A_selected_idx):
         data = val_dataset[idx]
-        if is_two_dataset:
-            for k ,v in data['A'].items():
-                if k != 'path':
-                    data['A'][k] = v.unsqueeze(0)
-            for k ,v in data['B'].items():
-                if k != 'path':
-                    data['B'][k] = v.unsqueeze(0)
-        else:
-            for k ,v in data.items():
-                if k != 'path':
-                    data[k] = v.unsqueeze(0)
+        for k ,v in data.items():
+            if k != 'path':
+                data[k] = v.unsqueeze(0)
         model.set_input(data)
         with torch.no_grad():
             model.forward()
-        fetched_data = fetch_reals(data['A'] if is_two_dataset else data, lidar_A, device, opt.model.norm_label)
+        fetched_data = fetch_reals(data, lidar_A, device, opt.model.norm_label)
         if cl_args.on_input:
             # assert is_two_dataset == False
-            if 'inv' in fetched_data:
-                synth_inv = fetched_data['inv']
+            if 'depth' in fetched_data:
+                synth_depth = fetched_data['depth']
             if 'reflectance' in fetched_data:
                 synth_reflectance = fetched_data['reflectance']
             if 'mask' in fetched_data:
@@ -255,23 +219,19 @@ def main(runner_cfg_path=None):
                 synth_reflectance = model.synth_reflectance 
             if hasattr(model, 'synth_mask'):
                 synth_mask = model.synth_mask
-            if hasattr(model, 'synth_inv') and not cl_args.no_inv:
-                synth_inv = model.synth_inv
+            if hasattr(model, 'synth_depth') and not cl_args.no_inv:
+                synth_depth = model.synth_depth
             else:
-                synth_inv = fetched_data['inv'] * synth_mask
-        synth_depth = lidar.revert_depth(tanh_to_sigmoid(synth_inv), norm=False)
-        synth_points = lidar.inv_to_xyz(tanh_to_sigmoid(synth_inv)) * lidar.max_depth
-        synth_reflectance = tanh_to_sigmoid(synth_reflectance)
-        synth_data = torch.cat([synth_depth, synth_points, synth_reflectance, synth_mask], dim=1)
-        pred, _ = seg_model(synth_data * fetched_data['mask'])
-        pred = pred.argmax(dim=1)
+                synth_depth = fetched_data['depth'] * synth_mask
         current_visuals = model.get_current_visuals()
-        # if cl_args.on_input :
-        #     current_visuals['synth_inv'] = synth_inv
-        #     current_visuals['synth_mask'] = synth_mask
-        #     current_visuals['synth_reflectance'] = synth_reflectance
-        current_visuals['synth_label'] = pred
-        # current_visuals = {k: v for k ,v in current_visuals.items() if 'B' not in k}
+        if hasattr(model, 'synth_reflectance'):
+            synth_depth = lidar.revert_depth(tanh_to_sigmoid(synth_depth), norm=False)
+            synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
+            synth_reflectance = tanh_to_sigmoid(synth_reflectance)
+            synth_data = torch.cat([synth_depth, synth_points, synth_reflectance, synth_mask], dim=1)
+            pred, _ = seg_model(synth_data * fetched_data['mask'])
+            pred = pred.argmax(dim=1)
+            current_visuals['synth_label'] = pred
         seq = seqs[i]
         _id = ids[i]
         # if is_two_dataset:
