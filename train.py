@@ -179,7 +179,7 @@ def main(runner_cfg_path=None):
     test_dl_iter = iter(test_dl)
     data_dict = defaultdict(list)
     N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), 1000)
-    test_tq = tqdm.tqdm(total=n_test_batch, desc='real_data', position=5)
+    test_tq = tqdm.tqdm(total=N//opt.training.batch_size, desc='real_data', position=5)
     for i in range(0, N, opt.training.batch_size):
         data = next(test_dl_iter)
         data = fetch_reals(data, lidar_ref, device, opt.model.norm_label)
@@ -249,8 +249,8 @@ def main(runner_cfg_path=None):
         for i in range(n_val_batch):
             data = next(val_dl_iter)
             model.set_input(data)
-            with torch.no_grad():
-                model.calc_supervised_metrics(cl_args.no_inv, lidar_A, lidar, is_transformer)
+            model.validate()
+            model.calc_supervised_metrics(cl_args.no_inv, lidar_A, lidar, is_transformer)
             
             fetched_data = fetch_reals(data, lidar_A, device)
             if cl_args.on_input:

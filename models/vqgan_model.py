@@ -39,7 +39,7 @@ class VQGANModel(BaseModel):
         
         opt_m = opt.model
         opt_t = opt.training
-        self.eval_metrics = ['cd', 'depth_accuracies', 'depth_errors'] 
+        self.eval_metrics = ['cd', 'depth_accuracies', 'depth_errors', 'val_nd', 'val_rec'] 
         
         if 'depth' in opt_m.modality_B:
             self.visual_names.extend(['synth_depth', 'synth_mask'])
@@ -89,7 +89,15 @@ class VQGANModel(BaseModel):
         for k , v in out_dict.items():
             setattr(self, 'synth_' + k , v)
         
-
+    @torch.no_grad()
+    def validate(self):
+        self.forward()
+        points_input = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.real_A))
+        points_rec = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.fake_B))
+        _, loss_G_dict = self.netVQ.module.training_step(self.real_A, 0, points_inputs=points_input, \
+                                                                          points_rec=points_rec, global_step=self.global_step)
+        for k, v in loss_G_dict.items():
+            setattr(self, 'val_' + k, v.item())
 
     def optimize_parameters(self):
         self.forward()                   # compute fake images: G(A)

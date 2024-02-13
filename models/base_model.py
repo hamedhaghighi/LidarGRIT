@@ -99,9 +99,9 @@ class BaseModel(ABC):
     @abstractmethod
     def set_seg_model(self, model):
         pass
-    
+    @torch.no_grad()
     def calc_supervised_metrics(self, no_inv, lidar_A, lidar_B, is_transformer=False):
-        self.forward()
+        # self.forward()
         synth_depth = self.real_depth * self.synth_mask if no_inv else (self.rec_synth_depth if is_transformer else self.synth_depth)
         points_gen = lidar_B.depth_to_xyz(tanh_to_sigmoid(synth_depth))
         points_gen = flatten(points_gen)

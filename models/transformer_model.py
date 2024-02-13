@@ -43,7 +43,7 @@ class TransformerModel(BaseModel):
         
         opt_m = opt.model
         opt_t = opt.training
-        self.eval_metrics = ['cd', 'depth_accuracies', 'depth_errors'] 
+        self.eval_metrics = ['cd', 'depth_accuracies', 'depth_errors', 'val_t'] 
         self.be_unconditional = True
         self.sos_token = 0
         self.learning_rate = opt_t.lr * opt_t.batch_size
@@ -242,7 +242,12 @@ class TransformerModel(BaseModel):
         for k , v in out_dict.items():
             setattr(self, 'rec_synth_' + k , v)
 
-    
+    @torch.no_grad()
+    def validate(self):
+        logits, target = self.forward()
+        loss_t = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+        setattr(self, 'val_t', loss_t.item())
+
 
     def forward(self):
         # one step to produce the logits
