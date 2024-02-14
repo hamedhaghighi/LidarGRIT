@@ -8,7 +8,7 @@ from models.modules.losses.vqperceptual import VQLPIPSWithDiscriminator
 from models.modules.discriminator.model import NLayerDiscriminator
 from models.modules.losses.lpips import LPIPS
 from models.vqgan import VQModel
-from util import class_to_dict
+from util import class_to_dict, diff_augment
 from models.util import init_net
 
 class VQGANModel(BaseModel):
@@ -35,7 +35,6 @@ class VQGANModel(BaseModel):
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
         self.model_names = ['VQ']
-
         
         opt_m = opt.model
         opt_t = opt.training
@@ -53,6 +52,7 @@ class VQGANModel(BaseModel):
         # same_kernel_size = opt.dataset.dataset_A.img_prop.width == opt.dataset.dataset_A.img_prop.height
         opt_m_dict = class_to_dict(opt_m)
         self.netVQ = init_net(VQModel(**opt_m_dict['vqmodel'], out_ch=opt_m.out_ch), self.gpu_ids)
+        # self.Aug = diff_augment.DiffAugment(opt_m.augment)
         self.lidar = lidar
         self.opt_m = opt_m
         if self.isTrain:
@@ -85,38 +85,32 @@ class VQGANModel(BaseModel):
     
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        out_dict, self.fake_B, _ = self.netVQ(self.real_A)
+        out_dict, self.fake_B, qloss = self.netVQ(self.real_A)
+        self.qloss = qloss
         for k , v in out_dict.items():
             setattr(self, 'synth_' + k , v)
         
     @torch.no_grad()
     def validate(self):
         self.forward()
-        points_input = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.real_A))
-        points_rec = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.fake_B))
-        _, loss_G_dict = self.netVQ.module.training_step(self.real_A, 0, points_inputs=points_input, \
-                                                                          points_rec=points_rec,\
-                                                                              global_step=self.global_step,\
-                                                                                  mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
+        _, loss_G_dict = self.netVQ.module.training_step(self.real_A, self.fake_B, 0, global_step=self.global_step,\
+                                                                                  qloss=self.qloss, lidar=self.lidar, mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
         for k, v in loss_G_dict.items():
             setattr(self, 'val_' + k, v.item())
 
     def optimize_parameters(self):
         self.forward()                   # compute fake images: G(A)
-        points_input = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.real_A))
-        points_rec = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.fake_B))
         # update D
         self.optimizers[1].zero_grad()     # set D's gradients to zero
-        self.loss_D, loss_D_dict = self.netVQ.module.training_step(self.real_A, 1, global_step=self.global_step)
+        self.loss_D, loss_D_dict = self.netVQ.module.training_step(self.real_A, self.fake_B, 1, global_step=self.global_step)
         for k, v in loss_D_dict.items():
             setattr(self, 'loss_' + k, v)
         self.loss_D.backward()                # calculate gradients for D
         self.optimizers[1].step()          # update D's weights
         # update G
         self.optimizers[0].zero_grad()     # set G's gradients to zero
-        self.loss_total_G, loss_G_dict = self.netVQ.module.training_step(self.real_A, 0, points_inputs=points_input, \
-                                                                          points_rec=points_rec, global_step=self.global_step,\
-                                                                            mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
+        self.loss_total_G, loss_G_dict = self.netVQ.module.training_step(self.real_A, self.fake_B, 0, global_step=self.global_step,\
+                                                                                  qloss=self.qloss, lidar=self.lidar, mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
         for k, v in loss_G_dict.items():
             setattr(self, 'loss_' + k, v)
         self.loss_total_G.backward()                # calculate gradients for G

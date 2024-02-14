@@ -193,7 +193,7 @@ class TransformerModel(BaseModel):
         if self.raster_type == 'c2c' and len(indices.shape) == 2:
             indices = indices.repeat_interleave(qz_shape[2], dim=0)
         if len(indices.shape) > 2:
-            indices = indices.view(c.shape[0], -1)
+            indices = indices.view(c.shape[0], -1) if self.raster_type == 'p2p' else indices.view(c.shape[0] * c.shape[2], -1)
         return quant_c, indices
 
     @torch.no_grad()

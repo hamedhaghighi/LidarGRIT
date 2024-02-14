@@ -6,7 +6,7 @@ from models.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
 from models.modules.vqvae.quantize import GumbelQuantize
 from models.modules.vqvae.quantize import EMAVectorQuantizer
 from models.util import instantiate_from_config
-
+from util import tanh_to_sigmoid
 
 class VQModel(nn.Module):
     def __init__(self,
@@ -80,44 +80,24 @@ class VQModel(nn.Module):
             x = x[..., None]
         x = x.permute(0, 3, 1, 2).to(memory_format=torch.contiguous_format)
         return x.float()
-
-    def training_step(self, batch, optimizer_idx, global_step, points_inputs=None, points_rec=None, mask_logits=None, real_mask=None):
-        _, xrec, qloss = self(batch)
+    def training_step(self, real_A, fake_B, optimizer_idx, global_step, qloss=None, lidar=None, mask_logits=None, real_mask=None):
 
         if optimizer_idx == 0:
+            points_input = lidar.depth_to_xyz(tanh_to_sigmoid(real_A))
+            points_rec = lidar.depth_to_xyz(tanh_to_sigmoid(fake_B))
             # autoencode
-            aeloss, log_dict_ae = self.loss(qloss, batch, xrec, optimizer_idx, global_step,
+            aeloss, log_dict_ae = self.loss(qloss, real_A, fake_B, optimizer_idx, global_step,
                                             last_layer=self.get_last_layer(), split="train",\
-                                                  points_inputs=points_inputs, points_rec=points_rec, mask_logits=mask_logits, real_mask=real_mask)
+                                                  points_inputs=points_input, points_rec=points_rec, mask_logits=mask_logits, real_mask=real_mask)
 
-            # self.log("train/aeloss", aeloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
-            # self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=True)
             return aeloss, log_dict_ae
 
         if optimizer_idx == 1:
             # discriminator
-            discloss, log_dict_disc = self.loss(qloss, batch, xrec, optimizer_idx, global_step,
+            discloss, log_dict_disc = self.loss(qloss, real_A, fake_B, optimizer_idx, global_step,
                                             last_layer=self.get_last_layer(), split="train")
-            # self.log("train/discloss", discloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
-            # self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True)
             return discloss, log_dict_disc
 
-    def validation_step(self, batch, batch_idx):
-        x = self.get_input(batch, self.image_key)
-        xrec, qloss = self(x)
-        aeloss, log_dict_ae = self.loss(qloss, x, xrec, 0, self.global_step,
-                                            last_layer=self.get_last_layer(), split="val")
-
-        discloss, log_dict_disc = self.loss(qloss, x, xrec, 1, self.global_step,
-                                            last_layer=self.get_last_layer(), split="val")
-        rec_loss = log_dict_ae["val/rec_loss"]
-        self.log("val/rec_loss", rec_loss,
-                   prog_bar=True, logger=True, on_step=True, on_epoch=True, sync_dist=True)
-        self.log("val/aeloss", aeloss,
-                   prog_bar=True, logger=True, on_step=True, on_epoch=True, sync_dist=True)
-        self.log_dict(log_dict_ae)
-        self.log_dict(log_dict_disc)
-        return self.log_dict
 
     def configure_optimizers(self):
         lr = self.learning_rate
