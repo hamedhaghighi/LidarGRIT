@@ -87,6 +87,7 @@ class TransformerModel(BaseModel):
         self.lidar = lidar
         self.opt_m = opt_m
         self.pkeep = 1.0
+        self.raster_type = opt_m.raster_type
         if self.isTrain:
             self.optimizer = self.configure_optimizers()
             self.optimizers.append(self.optimizer)
@@ -178,16 +179,19 @@ class TransformerModel(BaseModel):
     @torch.no_grad()
     def encode_to_z(self, x):
         quant_z, _, info = self.first_stage_model.encode(x)
-        indices = info[2].view(quant_z.shape[0], -1)
+
+        indices = info[2].view(quant_z.shape[0], -1) if self.raster_type == 'p2p' else info[2].view(quant_z.shape[0] * quant_z.shape[2], -1)
         if self.permuter is not None:
             indices = self.permuter(indices)
         return quant_z, indices
 
     @torch.no_grad()
-    def encode_to_c(self, c):
+    def encode_to_c(self, c, qz_shape=None):
         if self.downsample_cond_size > -1:
             c = F.interpolate(c, size=(self.downsample_cond_size, self.downsample_cond_size))
         quant_c, _, [_,_,indices] = self.cond_stage_model.encode(c)
+        if self.raster_type == 'c2c' and len(indices.shape) == 2:
+            indices = indices.repeat_interleave(qz_shape[2], dim=0)
         if len(indices.shape) > 2:
             indices = indices.view(c.shape[0], -1)
         return quant_c, indices
@@ -197,8 +201,8 @@ class TransformerModel(BaseModel):
         if self.permuter is not None:
             index = self.permuter(index, reverse=True)
         bhwc = (zshape[0],zshape[2],zshape[3],zshape[1])
-        quant_z = self.first_stage_model.quantize.get_codebook_entry(
-            index.reshape(-1), shape=bhwc)
+        quant_z = self.first_stage_model.quantize.get_codebook_entry\
+            (index.reshape(-1), shape=bhwc)
         x = self.first_stage_model.decode(quant_z)
         return x
 
@@ -252,7 +256,7 @@ class TransformerModel(BaseModel):
     def forward(self):
         # one step to produce the logits
         quant_z, z_indices = self.encode_to_z(self.real_A)
-        _, c_indices = self.encode_to_c(self.real_A)
+        _, c_indices = self.encode_to_c(self.real_A, quant_z.shape)
 
         if self.isTrain and self.pkeep < 1.0:
             mask = torch.bernoulli(self.pkeep*torch.ones(z_indices.shape,

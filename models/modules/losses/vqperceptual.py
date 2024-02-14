@@ -33,7 +33,7 @@ def vanilla_d_loss(logits_real, logits_fake):
 class VQLPIPSWithDiscriminator(nn.Module):
     def __init__(self, disc_start, codebook_weight=1.0, pixelloss_weight=1.0,
                  disc_num_layers=3, disc_in_channels=3, disc_factor=1.0, disc_weight=1.0,
-                 perceptual_weight=1.0, use_actnorm=False, disc_conditional=False, lambda_nd=0.0,
+                 perceptual_weight=1.0, use_actnorm=False, disc_conditional=False, lambda_nd=0.0, lambda_mask=0.0,
                  disc_ndf=64, disc_loss="hinge"):
         super().__init__()
         assert disc_loss in ["hinge", "vanilla"]
@@ -42,6 +42,7 @@ class VQLPIPSWithDiscriminator(nn.Module):
         self.perceptual_loss = LPIPS().eval()
         self.perceptual_weight = perceptual_weight
         self.lambda_nd = lambda_nd
+        self.BCEwithLogit = torch.nn.BCEWithLogitsLoss(reduction="none")
         self.discriminator = NLayerDiscriminator(input_nc=disc_in_channels,
                                             n_layers=disc_num_layers,
                                             use_actnorm=use_actnorm,
@@ -58,6 +59,7 @@ class VQLPIPSWithDiscriminator(nn.Module):
         self.disc_factor = disc_factor
         self.discriminator_weight = disc_weight
         self.disc_conditional = disc_conditional
+        self.lambda_mask = lambda_mask
 
     def calculate_adaptive_weight(self, nll_loss, g_loss, last_layer=None):
         if last_layer is not None:
@@ -85,7 +87,7 @@ class VQLPIPSWithDiscriminator(nn.Module):
         # Calculate the angle
 
     def forward(self, codebook_loss, inputs, reconstructions, optimizer_idx,
-                global_step, last_layer=None, cond=None, split="train", points_inputs=None, points_rec=None):
+                global_step, last_layer=None, cond=None, split="train", points_inputs=None, points_rec=None, mask_logits=None, real_mask=None):
         # now the GAN part
         if optimizer_idx == 0:
             rec_loss = torch.abs(inputs.contiguous() - reconstructions.contiguous())
@@ -94,11 +96,14 @@ class VQLPIPSWithDiscriminator(nn.Module):
                 rec_loss = rec_loss + self.perceptual_weight * p_loss
             else:
                 p_loss = torch.tensor([0.0])
-
+            ## calculate the angle loss
             real_angle = self.calculate_neigbor_angles(points_inputs)
             fake_angle = self.calculate_neigbor_angles(points_rec)
             nd_loss = torch.abs(real_angle - fake_angle)
             rec_loss = rec_loss + self.lambda_nd * nd_loss
+            # mask loss
+            mask_loss = self.BCEwithLogit(mask_logits, real_mask)
+            rec_loss = rec_loss + self.lambda_mask * mask_loss
 
             nll_loss = rec_loss
             #nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
@@ -123,6 +128,7 @@ class VQLPIPSWithDiscriminator(nn.Module):
             loss = nll_loss + d_weight * disc_factor * g_loss + self.codebook_weight * codebook_loss.mean()
 
             log = {"nll": nll_loss.detach().mean(),
+                   "mask": mask_loss.detach().mean(),
                    "q": codebook_loss.detach().mean(),
                    "nd": nd_loss.detach().mean(),
                    "rec": rec_loss.detach().mean(),

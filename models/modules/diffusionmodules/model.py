@@ -400,7 +400,7 @@ class Model(nn.Module):
 
 class Encoder(nn.Module):
     def __init__(self, *, ch, out_ch=3, ch_mult=(1,2,4,8), num_res_blocks,
-                 attn_resolutions, dropout=0.0, resamp_with_conv=True, in_channels,
+                 attn_resolutions, dropout=0.0, resamp_with_conv=True, symmetric=True, has_attention=True, in_channels,
                  resolution, z_channels, double_z=True, **ignore_kwargs):
         super().__init__()
         self.ch = ch
@@ -409,7 +409,7 @@ class Encoder(nn.Module):
         self.num_res_blocks = num_res_blocks
         self.resolution = resolution
         self.in_channels = in_channels
-        self.symmetric = False
+        self.symmetric = symmetric
         # downsampling
         self.conv_in = torch.nn.Conv2d(in_channels,
                                        self.ch,
@@ -431,7 +431,7 @@ class Encoder(nn.Module):
                                          temb_channels=self.temb_ch,
                                          dropout=dropout))
                 block_in = block_out
-                if curr_res in attn_resolutions:
+                if curr_res in attn_resolutions and has_attention:
                     attn.append(AttnBlock(block_in))
             down = nn.Module()
             down.block = block
@@ -447,7 +447,7 @@ class Encoder(nn.Module):
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
                                        dropout=dropout)
-        self.mid.attn_1 = AttnBlock(block_in)
+        self.mid.attn_1 = AttnBlock(block_in) if has_attention else nn.Identity()
         self.mid.block_2 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
@@ -494,7 +494,7 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(self, *, ch, out_ch, ch_mult=(1,2,4,8), num_res_blocks,
-                 attn_resolutions, out_modality, dropout=0.0, resamp_with_conv=True, in_channels,
+                 attn_resolutions, out_modality, dropout=0.0, resamp_with_conv=True, symmetric=True, has_attention=True, soft_mask=True, in_channels,
                  resolution, z_channels, give_pre_end=False, **ignorekwargs):
         super().__init__()
         self.ch = ch
@@ -505,7 +505,8 @@ class Decoder(nn.Module):
         self.in_channels = in_channels
         self.give_pre_end = give_pre_end
         self.out_modality = out_modality
-        self.symmetric = False
+        self.symmetric = symmetric
+        self.soft_mask = soft_mask
         self.out_m_orig = out_modality.copy()
         if 'mask' in self.out_modality:
             self.out_modality.remove('mask')
@@ -531,7 +532,7 @@ class Decoder(nn.Module):
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
                                        dropout=dropout)
-        self.mid.attn_1 = AttnBlock(block_in)
+        self.mid.attn_1 = AttnBlock(block_in) if has_attention else nn.Identity()
         self.mid.block_2 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
@@ -549,7 +550,7 @@ class Decoder(nn.Module):
                                          temb_channels=self.temb_ch,
                                          dropout=dropout))
                 block_in = block_out
-                if curr_res in attn_resolutions:
+                if curr_res in attn_resolutions and has_attention:
                     attn.append(AttnBlock(block_in))
             up = nn.Module()
             up.block = block
@@ -598,7 +599,7 @@ class Decoder(nn.Module):
         h = self.norm_out(h)
         h = nonlinearity(h)
         h = self.conv_out(h)
-        return disentangle_output(h, self.out_m_orig, self.gumbel_sigmoid, self.out_modality)
+        return disentangle_output(h, self.out_m_orig, self.gumbel_sigmoid, self.out_modality, self.soft_mask)
 
 
 class VUNet(nn.Module):

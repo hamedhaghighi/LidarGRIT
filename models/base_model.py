@@ -52,7 +52,7 @@ class BaseModel(ABC):
             self.visual_names.extend(['real_B_mask'])
         if 'mask' in self.opt.model.out_ch:
             self.visual_names.extend(['real_mask', 'synth_mask'])
-            # self.visual_names.append('synth_depth_orig')
+            self.visual_names.append('synth_depth_orig')
             # self.visual_names.append('synth_reflectance_orig')
         self.visual_names = [s for s in self.visual_names]
         self.optimizers = []

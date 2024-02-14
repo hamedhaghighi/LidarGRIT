@@ -26,7 +26,7 @@ def class_to_dict(obj):
             dict_[k] = v
     return dict_
 
-def disentangle_output(output, out_ch, gumbel, out_modality):
+def disentangle_output(output, out_ch, gumbel, out_modality, soft_mask=True):
     output_dict = {}
     i = 0
     for k in out_ch:
@@ -34,7 +34,7 @@ def disentangle_output(output, out_ch, gumbel, out_modality):
         i = i + m2ch[k]
     if 'mask' in output_dict:
         output_dict['mask_logit'] = output_dict['mask']
-        mask = output_dict['mask'] = gumbel(output_dict['mask'])
+        mask = output_dict['mask'] = gumbel(output_dict['mask_logit']) if soft_mask else (torch.sigmoid(output_dict['mask_logit'].detach()) > 0.5).float()
         if 'depth' in output_dict:
             depth = torch.tanh(output_dict['depth'])
             output_dict['depth_orig'] = depth

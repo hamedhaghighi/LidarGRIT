@@ -26,7 +26,7 @@ class VQModel(nn.Module):
         super().__init__()
         self.image_key = image_key
         self.encoder = Encoder(**ddconfig)
-        self.decoder = Decoder(out_modality=out_ch, **ddconfig)
+        self.decoder = Decoder(out_modality=out_ch, soft_mask=lossconfig['params']['lambda_mask'] == 0.0, **ddconfig)
         self.loss = instantiate_from_config(lossconfig)
         self.quantize = VectorQuantizer(n_embed, embed_dim, beta=0.25,
                                         remap=remap, sane_index_shape=sane_index_shape)
@@ -81,13 +81,14 @@ class VQModel(nn.Module):
         x = x.permute(0, 3, 1, 2).to(memory_format=torch.contiguous_format)
         return x.float()
 
-    def training_step(self, batch, optimizer_idx, global_step, points_inputs=None, points_rec=None):
+    def training_step(self, batch, optimizer_idx, global_step, points_inputs=None, points_rec=None, mask_logits=None, real_mask=None):
         _, xrec, qloss = self(batch)
 
         if optimizer_idx == 0:
             # autoencode
             aeloss, log_dict_ae = self.loss(qloss, batch, xrec, optimizer_idx, global_step,
-                                            last_layer=self.get_last_layer(), split="train", points_inputs=points_inputs, points_rec=points_rec)
+                                            last_layer=self.get_last_layer(), split="train",\
+                                                  points_inputs=points_inputs, points_rec=points_rec, mask_logits=mask_logits, real_mask=real_mask)
 
             # self.log("train/aeloss", aeloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
             # self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=True)

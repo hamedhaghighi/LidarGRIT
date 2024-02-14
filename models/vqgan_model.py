@@ -30,7 +30,7 @@ class VQGANModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['total_G', 'D', 'q', 'rec', 'p', 'gan', 'nd']
+        self.loss_names = ['total_G', 'D', 'q', 'rec', 'p', 'gan', 'nd', 'mask', 'disc']
         
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
@@ -95,7 +95,9 @@ class VQGANModel(BaseModel):
         points_input = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.real_A))
         points_rec = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.fake_B))
         _, loss_G_dict = self.netVQ.module.training_step(self.real_A, 0, points_inputs=points_input, \
-                                                                          points_rec=points_rec, global_step=self.global_step)
+                                                                          points_rec=points_rec,\
+                                                                              global_step=self.global_step,\
+                                                                                  mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
         for k, v in loss_G_dict.items():
             setattr(self, 'val_' + k, v.item())
 
@@ -105,13 +107,16 @@ class VQGANModel(BaseModel):
         points_rec = self.lidar.depth_to_xyz(tanh_to_sigmoid(self.fake_B))
         # update D
         self.optimizers[1].zero_grad()     # set D's gradients to zero
-        self.loss_D, _ = self.netVQ.module.training_step(self.real_A, 1, global_step=self.global_step)
+        self.loss_D, loss_D_dict = self.netVQ.module.training_step(self.real_A, 1, global_step=self.global_step)
+        for k, v in loss_D_dict.items():
+            setattr(self, 'loss_' + k, v)
         self.loss_D.backward()                # calculate gradients for D
         self.optimizers[1].step()          # update D's weights
         # update G
         self.optimizers[0].zero_grad()     # set G's gradients to zero
         self.loss_total_G, loss_G_dict = self.netVQ.module.training_step(self.real_A, 0, points_inputs=points_input, \
-                                                                          points_rec=points_rec, global_step=self.global_step)
+                                                                          points_rec=points_rec, global_step=self.global_step,\
+                                                                            mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
         for k, v in loss_G_dict.items():
             setattr(self, 'loss_' + k, v)
         self.loss_total_G.backward()                # calculate gradients for G
