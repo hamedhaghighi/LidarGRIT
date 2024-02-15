@@ -2,7 +2,7 @@ import time
 # from data import create_dataset
 from models import create_model
 from util.visualizer import Visualizer
-from fid import FID
+from util.metrics.fid import FID
 from dataset.datahandler import get_data_loader
 from rangenet.tasks.semantic.modules.segmentator import *
 import yaml
@@ -20,7 +20,7 @@ from util.metrics.cov_mmd_1nna import compute_cov_mmd_1nna
 from util.metrics.jsd import compute_jsd
 from util.metrics.swd import compute_swd
 from util.metrics.seg_accuracy import compute_seg_accuracy
-
+from util.metrics.fpd import FPD   
 import random
 
 
@@ -32,9 +32,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 def depth_to_xyz(depth, lidar, tol=1e-8):
     depth = tanh_to_sigmoid(depth).clamp_(0, 1)
     xyz = lidar.depth_to_xyz(depth, tol)
-    xyz = xyz.flatten(2).transpose(1, 2)  # (B,N,3)
+    xyz_out = xyz.flatten(2)
+    xyz = xyz_out.transpose(1, 2)  # (B,N,3)
     xyz = downsample_point_clouds(xyz, 512)
-    return xyz
+    return xyz, xyz_out
 
 
 class M_parser():
@@ -174,7 +175,9 @@ def main(runner_cfg_path=None):
     train_dl_iter = iter(train_dl); 
     data = next(train_dl_iter)
     model.setup(opt.training)
-    fid_cls = FID(seg_model, train_dataset, cl_args.ref_dataset_name, lidar_A) if cl_args.ref_dataset_name!= '' else None
+    fid_cls = FID(seg_model, train_dataset, cl_args.ref_dataset_name, lidar_A) \
+        if (cl_args.ref_dataset_name!= '' and 'reflectance' in opt.model.modality_B) else None
+    fpd_cls = FPD(train_dataset, cl_args.ref_dataset_name, lidar_A) if cl_args.ref_dataset_name!= '' else None
     n_test_batch = 2 if cl_args.fast_test else  len(test_dl)
     test_dl_iter = iter(test_dl)
     data_dict = defaultdict(list)
@@ -184,7 +187,7 @@ def main(runner_cfg_path=None):
         data = next(test_dl_iter)
         data = fetch_reals(data, lidar_ref, device, opt.model.norm_label)
         data_dict['real-2d'].append(data['depth'])
-        data_dict['real-3d'].append(depth_to_xyz(data['depth'], lidar_ref))
+        data_dict['real-3d'].append(depth_to_xyz(data['depth'], lidar_ref)[0])
         test_tq.update(1)
     epoch_tq = tqdm.tqdm(total=opt.training.n_epochs, desc='Epoch', position=1)
     start_from_epoch = model.schedulers[0].last_epoch if opt.training.continue_train else 0 
@@ -239,6 +242,7 @@ def main(runner_cfg_path=None):
         dis_batch_ind = np.random.randint(0, n_val_batch)
         data_dict['synth-2d'] = [] 
         data_dict['synth-3d'] = []
+        fpd_points = []
         fid_samples = [] if fid_cls is not None else None
         iou_list = []
         m_acc_list = []
@@ -271,8 +275,10 @@ def main(runner_cfg_path=None):
                 else:
                     synth_depth = fetched_data['depth'] * synth_mask
             data_dict['synth-2d'].append(synth_depth)
-            data_dict['synth-3d'].append(depth_to_xyz(synth_depth, lidar))
-            if fid_cls is not None and len(fid_samples) < cl_args.n_fid and hasattr(model, 'synth_reflectance'):
+            ds_xyz , xyz = depth_to_xyz(synth_depth, lidar)
+            data_dict['synth-3d'].append(ds_xyz)
+            fpd_points.append(xyz)
+            if fid_cls is not None and len(fid_samples) < cl_args.n_fid:
                 synth_depth = tanh_to_sigmoid(synth_depth)
                 synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
                 synth_reflectance = tanh_to_sigmoid(synth_reflectance)
@@ -322,8 +328,10 @@ def main(runner_cfg_path=None):
         scores["jsd"] = compute_jsd(data_dict["synth-3d"] / 2.0, data_dict["real-3d"] / 2.0)
         scores.update(compute_cov_mmd_1nna(data_dict["synth-3d"], data_dict["real-3d"], 512, ("cd",)))
         torch.cuda.empty_cache()
-        if fid_cls is not None and len(fid_samples) > 0:
+        if fid_cls is not None:
             scores['fid'] = fid_cls.fid_score(torch.cat(fid_samples, dim=0))
+        if fpd_cls is not None:
+            scores['fpd'] = fpd_cls.fpd_score(torch.cat(fpd_points, dim=0))
         if losses["depth/rmse"] < min_rmse and opt.training.isTrain:
             min_rmse = losses["depth/rmse"]
             model.save_networks('best')
