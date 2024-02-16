@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
-
+import random
 
 def augment(x, policy="color,translation,cutout"):
     if policy:
@@ -29,6 +29,22 @@ def rand_brightness(x, band=0.5, p=1.0):
     y = x + brightness
     return y
 
+def rand_pix_drop(x):
+    B, _, _, _ = x.shape
+    mask_pix = x.bernoulli(p=random.random())
+    y = x * mask_pix + 0.0 * (1 - mask_pix)
+    mask_B = torch.empty((B), device=x.device).bernoulli_(p=0.8).bool()
+    y[mask_B] = x[mask_B]
+    return y
+
+def rand_row_drop(x, p=1.0):
+    B, C, H, W = x.shape
+    device = x.device
+    mask_row = torch.empty((B, 1, H, 1), device=device).bernoulli_(p=random.random())
+    y = x * mask_row + 0.0 * (1 - mask_row)
+    mask_b = torch.empty((B), device=device).bernoulli_(p=0.8).bool()
+    y[mask_b] = x[mask_b]
+    return y
 
 def rand_saturation(x, band=1.0, p=1.0):
     B, _, _, _ = x.shape
@@ -102,31 +118,25 @@ def rand_cutout(x, ratio=0.5, p=1.0):
     return y
 
 
+
 AUGMENT_FNS = {
     "brightness": rand_brightness,
     "saturation": rand_saturation,
     "contrast": rand_contrast,
     "translation": rand_translation,
     "cutout": rand_cutout,
+    "px_drop": rand_pix_drop,
+    "row_drop": rand_row_drop,
 }
 
 
 class DiffAugment(nn.Module):
     def __init__(self, policy=None, p=1.0):
         super().__init__()
-        if policy is None:
-            self.policy = [
-                "brightness",
-                "saturation",
-                "contrast",
-                "translation",
-                "cutout",
-            ]
-        else:
-            self.policy = policy
+        self.policy = policy
         self.p = p
 
     def forward(self, x):
         for p in self.policy:
-            x = AUGMENT_FNS[p](x, p=self.p)
+            x = AUGMENT_FNS[p](x)
         return x

@@ -82,7 +82,7 @@ def check_exp_exists(opt, cfg_args):
         elif 'vqgan' in opt_m.name:
             losscfg = opt_m.vqmodel.lossconfig.params
             opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_nd_{losscfg.lambda_nd}_L_disc_{losscfg.disc_weight}' \
-                + f'_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}'
+                + f'_d_start_{losscfg.disc_start}_L_mask_{losscfg.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}'
         elif 'transformer' in opt_m.name:
             opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}' \
                 + f'_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'

@@ -80,14 +80,14 @@ class VQModel(nn.Module):
             x = x[..., None]
         x = x.permute(0, 3, 1, 2).to(memory_format=torch.contiguous_format)
         return x.float()
-    def training_step(self, real_A, fake_B, optimizer_idx, global_step, qloss=None, lidar=None, mask_logits=None, real_mask=None):
+    def training_step(self, real_A, fake_B, optimizer_idx, global_step, aug_cls, qloss=None, lidar=None, mask_logits=None, real_mask=None):
 
         if optimizer_idx == 0:
             points_input = lidar.depth_to_xyz(tanh_to_sigmoid(real_A))
             points_rec = lidar.depth_to_xyz(tanh_to_sigmoid(fake_B))
             # autoencode
             aeloss, log_dict_ae = self.loss(qloss, real_A, fake_B, optimizer_idx, global_step,
-                                            last_layer=self.get_last_layer(), split="train",\
+                                            aug_cls, last_layer=self.get_last_layer(), split="train",\
                                                   points_inputs=points_input, points_rec=points_rec, mask_logits=mask_logits, real_mask=real_mask)
 
             return aeloss, log_dict_ae
@@ -95,7 +95,7 @@ class VQModel(nn.Module):
         if optimizer_idx == 1:
             # discriminator
             discloss, log_dict_disc = self.loss(qloss, real_A, fake_B, optimizer_idx, global_step,
-                                            last_layer=self.get_last_layer(), split="train")
+                                            aug_cls, last_layer=self.get_last_layer(), split="train")
             return discloss, log_dict_disc
 
 

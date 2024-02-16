@@ -42,7 +42,7 @@ class VQLPIPSWithDiscriminator(nn.Module):
         self.perceptual_loss = LPIPS().eval()
         self.perceptual_weight = perceptual_weight
         self.lambda_nd = lambda_nd
-        self.BCEwithLogit = torch.nn.BCEWithLogitsLoss(reduction="none")
+        self.BCEwithLogit = torch.nn.BCEWithLogitsLoss()
         self.discriminator = NLayerDiscriminator(input_nc=disc_in_channels,
                                             n_layers=disc_num_layers,
                                             use_actnorm=use_actnorm,
@@ -87,66 +87,64 @@ class VQLPIPSWithDiscriminator(nn.Module):
         # Calculate the angle
 
     def forward(self, codebook_loss, inputs, reconstructions, optimizer_idx,
-                global_step, last_layer=None, cond=None, split="train", points_inputs=None, points_rec=None, mask_logits=None, real_mask=None):
+                global_step, aug_cls, last_layer=None, cond=None, split="train", points_inputs=None, points_rec=None, mask_logits=None, real_mask=None):
         # now the GAN part
         if optimizer_idx == 0:
-            rec_loss = torch.abs(inputs.contiguous() - reconstructions.contiguous())
+            rec_loss = torch.abs(inputs.contiguous() - reconstructions.contiguous()) * real_mask
+            rec_loss = (rec_loss.sum(dim=(1, 2, 3)) / real_mask.sum(dim=(1, 2, 3))).mean()
+            total_loss = rec_loss
+
             if self.perceptual_weight > 0:
-                p_loss = self.perceptual_loss(inputs.contiguous(), reconstructions.contiguous())
-                rec_loss = rec_loss + self.perceptual_weight * p_loss
+                p_loss = self.perceptual_loss(inputs.contiguous(), reconstructions.contiguous()).mean()
+                total_loss += self.perceptual_weight * p_loss
             else:
                 p_loss = torch.tensor([0.0])
             ## calculate the angle loss
             real_angle = self.calculate_neigbor_angles(points_inputs)
             fake_angle = self.calculate_neigbor_angles(points_rec)
-            nd_loss = torch.abs(real_angle - fake_angle)
-            rec_loss = rec_loss + self.lambda_nd * nd_loss
+            nd_loss = torch.abs(real_angle - fake_angle).mean()
+            total_loss += self.lambda_nd * nd_loss
             # mask loss
             mask_loss = self.BCEwithLogit(mask_logits, real_mask)
-            rec_loss = rec_loss + self.lambda_mask * mask_loss
-
-            nll_loss = rec_loss
-            #nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
-            nll_loss = torch.mean(nll_loss)
+            total_loss += self.lambda_mask * mask_loss
 
             # generator update
             if cond is None:
                 assert not self.disc_conditional
-                logits_fake = self.discriminator(reconstructions.contiguous())
+                logits_fake = self.discriminator(aug_cls(reconstructions.contiguous()))
             else:
                 assert self.disc_conditional
-                logits_fake = self.discriminator(torch.cat((reconstructions.contiguous(), cond), dim=1))
+                logits_fake = self.discriminator(torch.cat((aug_cls(reconstructions.contiguous()), cond), dim=1))
             g_loss = -torch.mean(logits_fake)
 
             try:
-                d_weight = self.calculate_adaptive_weight(nll_loss, g_loss, last_layer=last_layer)
+                d_weight = self.calculate_adaptive_weight(total_loss, g_loss, last_layer=last_layer)
             except RuntimeError:
                 assert not self.training
                 d_weight = torch.tensor(0.0)
 
             disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
-            loss = nll_loss + d_weight * disc_factor * g_loss + self.codebook_weight * codebook_loss.mean()
+            loss = total_loss + d_weight * disc_factor * g_loss + self.codebook_weight * codebook_loss.mean()
 
-            log = {"nll": nll_loss.detach().mean(),
-                   "mask": mask_loss.detach().mean(),
-                   "q": codebook_loss.detach().mean(),
-                   "nd": nd_loss.detach().mean(),
-                   "rec": rec_loss.detach().mean(),
-                   "p": p_loss.detach().mean(),
+            log = {"mask": mask_loss.detach(),
+                   "q": codebook_loss.detach(),
+                   "nd": nd_loss.detach(),
+                   "rec": rec_loss.detach(),
+                   "p": p_loss.detach(),
                    "d_weight": d_weight.detach(),
                    "disc_factor": torch.tensor(disc_factor),
-                   "gan": g_loss.detach().mean(),
+                   "gan": g_loss.detach(),
                    }
             return loss, log
 
         if optimizer_idx == 1:
             # second pass for discriminator update
             if cond is None:
-                logits_real = self.discriminator(inputs.contiguous().detach())
-                logits_fake = self.discriminator(reconstructions.contiguous().detach())
+                logits_real = self.discriminator(aug_cls(inputs.contiguous()).detach())
+                logits_fake = self.discriminator(aug_cls(reconstructions.contiguous()).detach())
             else:
-                logits_real = self.discriminator(torch.cat((inputs.contiguous().detach(), cond), dim=1))
-                logits_fake = self.discriminator(torch.cat((reconstructions.contiguous().detach(), cond), dim=1))
+                logits_real = self.discriminator(torch.cat((aug_cls(inputs.contiguous()).detach(), cond), dim=1))
+                logits_fake = self.discriminator(torch.cat((aug_cls(reconstructions.contiguous()).detach(), cond), dim=1))
 
             disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
             d_loss = disc_factor * self.disc_loss(logits_real, logits_fake)
