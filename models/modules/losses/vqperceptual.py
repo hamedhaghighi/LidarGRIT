@@ -117,11 +117,12 @@ class VQLPIPSWithDiscriminator(nn.Module):
                 logits_fake = self.discriminator(torch.cat((aug_cls(reconstructions.contiguous()), cond), dim=1))
             g_loss = -torch.mean(logits_fake)
 
-            try:
-                d_weight = self.calculate_adaptive_weight(total_loss, g_loss, last_layer=last_layer)
-            except RuntimeError:
-                assert not self.training
-                d_weight = torch.tensor(0.0)
+            d_weight = self.discriminator_weight
+            # try:
+            #     d_weight = self.calculate_adaptive_weight(total_loss, g_loss, last_layer=last_layer)
+            # except RuntimeError:
+            #     assert not self.training
+            #     d_weight = torch.tensor(0.0)
 
             disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
             loss = total_loss + d_weight * disc_factor * g_loss + self.codebook_weight * codebook_loss.mean()
@@ -131,7 +132,7 @@ class VQLPIPSWithDiscriminator(nn.Module):
                    "nd": nd_loss.detach(),
                    "rec": rec_loss.detach(),
                    "p": p_loss.detach(),
-                   "d_weight": d_weight.detach(),
+                   "d_weight": torch.tensor(d_weight),
                    "disc_factor": torch.tensor(disc_factor),
                    "gan": g_loss.detach(),
                    }

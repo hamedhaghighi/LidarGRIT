@@ -34,7 +34,11 @@ def disentangle_output(output, out_ch, gumbel, out_modality, soft_mask=True):
         i = i + m2ch[k]
     if 'mask' in output_dict:
         output_dict['mask_logit'] = output_dict['mask']
-        mask = output_dict['mask'] = gumbel(output_dict['mask_logit']) if soft_mask else (torch.sigmoid(output_dict['mask_logit'].detach()) > 0.5).float()
+        if soft_mask:
+            mask = output_dict['mask'] = gumbel(output_dict['mask_logit'])
+        else:
+            prob = torch.sigmoid(output_dict['mask_logit'].detach())
+            mask = output_dict['mask'] = (torch.bernoulli(prob)).float()
         if 'depth' in output_dict:
             depth = torch.tanh(output_dict['depth'])
             output_dict['depth_orig'] = depth
@@ -260,7 +264,7 @@ def postprocess(synth, lidar, tol=1e-8, data_maps=None, dataset_name='kitti', no
     for key, value in synth.items():
         if 'depth' in key:
             out[key] = tanh_to_sigmoid(value).clamp_(0, 1)
-            if not 'depth_orig' in key:
+            if not 'depth_orig' in key  and not 'aug' in key:
                 out[key.replace('depth', 'points')] = lidar.depth_to_xyz(out[key], tol)
         elif "reflectance" in key:
             out[key] = tanh_to_sigmoid(value).clamp_(0, 1)

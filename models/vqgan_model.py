@@ -85,7 +85,7 @@ class VQGANModel(BaseModel):
         
     
     def forward(self, train=True):
-        """Run forward pass; called by both functions <optimize_parameters> and <test>."""
+        """Run forward pass; called by both functions <optimize_parameters> and <vallidatee>."""
         out_dict, self.fake_B, qloss = self.netVQ(self.Aug(self.real_A) if train else self.real_A)
         self.qloss = qloss
         for k , v in out_dict.items():
