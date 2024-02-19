@@ -40,7 +40,7 @@ def rand_pix_drop(x):
 def rand_row_drop(x, p=1.0):
     B, C, H, W = x.shape
     device = x.device
-    mask_row = torch.empty((B, 1, H, 1), device=device).bernoulli_(p=random.random() * 0.5) # p in [0, 0.5]
+    mask_row = torch.empty((B, 1, H, 1), device=device).bernoulli_(p=random.random()) # p in [0, 0.5]
     y = x * mask_row + 0.0 * (1 - mask_row)
     mask_b = torch.empty((B), device=device).bernoulli_(p=0.8).bool()
     y[mask_b] = x[mask_b]
@@ -50,7 +50,7 @@ def rand_row_drop(x, p=1.0):
 def rand_col_drop(x, p=1.0):
     B, C, H, W = x.shape
     device = x.device
-    mask_col = torch.empty((B, 1, 1, W), device=device).bernoulli_(p=random.random() * 0.5) # p in [0, 0.5]
+    mask_col = torch.empty((B, 1, 1, W), device=device).bernoulli_(p=random.random()) # p in [0, 0.5]
     y = x * mask_col + 0.0 * (1 - mask_col)
     mask_b = torch.empty((B), device=device).bernoulli_(p=0.8).bool()
     y[mask_b] = x[mask_b]

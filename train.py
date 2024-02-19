@@ -166,7 +166,8 @@ def main(runner_cfg_path=None):
 
     is_ref_semposs = cl_args.ref_dataset_name == 'semanticPOSS'
     train_dl, train_dataset = get_data_loader(opt, 'train', opt.training.batch_size,is_ref_semposs=is_ref_semposs)
-    val_dl, val_dataset = get_data_loader(opt, 'val' if (opt.training.isTrain or cl_args.on_input)  else 'test', opt.training.batch_size, shuffle=False, is_ref_semposs=is_ref_semposs)  
+    val_dl, val_dataset = get_data_loader(opt, 'val', opt.training.batch_size, shuffle=False, is_ref_semposs=is_ref_semposs)  
+    # val and test are similar splits during training
     test_dl, test_dataset = get_data_loader(opt, 'test', opt.training.batch_size, dataset_name=cl_args.ref_dataset_name, two_dataset_enabled=False, is_ref_semposs=is_ref_semposs)
     with torch.no_grad():
         seg_model = Segmentator(dataset_name=cl_args.ref_dataset_name if cl_args.seg_cfg_path == '' else 'synth', cfg_path=cl_args.seg_cfg_path).to(device)
@@ -182,7 +183,7 @@ def main(runner_cfg_path=None):
     n_test_batch = 2 if cl_args.fast_test else  len(test_dl)
     test_dl_iter = iter(test_dl)
     data_dict = defaultdict(list)
-    N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), 1000)
+    N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), 1000 if opt.training.isTrain else 5000)
     test_tq = tqdm.tqdm(total=N//opt.training.batch_size, desc='real_data', position=5)
     for i in range(0, N, opt.training.batch_size):
         data = next(test_dl_iter)

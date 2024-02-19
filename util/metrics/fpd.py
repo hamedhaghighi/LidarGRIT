@@ -50,7 +50,7 @@ class FPD():
   def compute_features(self, data_tensor):
     n_batch = np.ceil(len(data_tensor) / self.batch_size)
     features_list = []
-    for i in trange(int(n_batch), desc='extracting features for fid'):
+    for i in trange(int(n_batch), desc='extracting features for fpd'):
       data = data_tensor[i * self.batch_size: (i + 1) * self.batch_size]
       feature = self.pointnet(data)
       features_list.append(feature.detach().cpu().numpy())

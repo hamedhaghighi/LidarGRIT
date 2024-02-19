@@ -17,6 +17,8 @@ import torch
 from glob import glob
 import yaml
 from PIL import Image
+import wandb
+from util import class_to_dict
 
 if sys.version_info[0] == 2:
     VisdomExceptionBase = Exception
@@ -123,6 +125,7 @@ class Visualizer():
             now = time.strftime("%c")
             log_file.write('================ Training Loss (%s) ================\n' % now)
         self.norm_label = opt.model.norm_label
+        # wandb.init(project='vqgan', config=class_to_dict(opt))
 
     def log_imgs(self, tensor, tag, step, color=True, cmap='turbo', save_img=False, ds_name = 'carla'):
         B = tensor.shape[0]
@@ -148,6 +151,7 @@ class Visualizer():
             im_grid.save(os.path.join(img_folder_dir, tag.replace('/', '_') + '.png'))
         else:
             self.writer.add_image(tag, grid, step)
+            # wandb.log({tag: [wandb.Image(grid, caption=tag)]}, step=step)
 
     def display_current_results(self, phase, current_visuals, g_step, data_maps_A,\
          dataset_name_A,lidar_A, data_maps_B=None, dataset_name_B=None, lidar_B=None, save_img=False):
@@ -189,6 +193,7 @@ class Visualizer():
         """
         for tag , loss in losses.items():
             self.writer.add_scalar(phase + '/' + tag, loss, g_step)
+            # wandb.log({phase + '/' + tag: loss}, step=g_step)
 
         # plotting epoch    
         self.writer.add_scalar('epoch', epoch, g_step)
