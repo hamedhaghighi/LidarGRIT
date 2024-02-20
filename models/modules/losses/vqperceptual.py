@@ -90,8 +90,11 @@ class VQLPIPSWithDiscriminator(nn.Module):
                 global_step, aug_cls, last_layer=None, cond=None, split="train", points_inputs=None, points_rec=None, mask_logits=None, real_mask=None):
         # now the GAN part
         if optimizer_idx == 0:
-            rec_loss = torch.abs(inputs.contiguous() - reconstructions.contiguous()) * real_mask
-            rec_loss = (rec_loss.sum(dim=(1, 2, 3)) / real_mask.sum(dim=(1, 2, 3))).mean()
+            if self.lambda_mask == 0.0 and self.discriminator_weight == 0.0:
+                rec_loss = torch.abs(inputs.contiguous() - reconstructions.contiguous()).mean()
+            else:
+                rec_loss = torch.abs(inputs.contiguous() - reconstructions.contiguous()) * real_mask
+                rec_loss = (rec_loss.sum(dim=(1, 2, 3)) / real_mask.sum(dim=(1, 2, 3))).mean()
             total_loss = rec_loss
 
             if self.perceptual_weight > 0:

@@ -111,6 +111,7 @@ def main(runner_cfg_path=None):
     parser.add_argument('--data_dir', type=str, default='', help='Path of the dataset A')
     parser.add_argument('--data_dir_B', type=str, default='', help='Path of the dataset B')
     parser.add_argument('--seg_cfg_path', type=str, default='', help='Path of segmentator cfg')
+    parser.add_argument('--seg_exp', action='store_true', help='do segmentation experiments')
     parser.add_argument('--load', type=str, default='', help='the name of the experiment folder while loading the experiment')
     parser.add_argument('--test', action='store_true', help='test the model')
     parser.add_argument('--fast_test', action='store_true', help='fast test of experiment')
@@ -183,7 +184,7 @@ def main(runner_cfg_path=None):
     n_test_batch = 2 if cl_args.fast_test else  len(test_dl)
     test_dl_iter = iter(test_dl)
     data_dict = defaultdict(list)
-    N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), 1000 if opt.training.isTrain else 5000)
+    N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), 5000)
     test_tq = tqdm.tqdm(total=N//opt.training.batch_size, desc='real_data', position=5)
     for i in range(0, N, opt.training.batch_size):
         data = next(test_dl_iter)
@@ -286,7 +287,7 @@ def main(runner_cfg_path=None):
                 synth_reflectance = tanh_to_sigmoid(synth_reflectance)
                 synth_data = torch.cat([synth_depth, synth_points, synth_reflectance, synth_mask], dim=1)
                 fid_samples.append(synth_data)
-                if not opt.training.isTrain:
+                if not opt.training.isTrain and cl_args.seg_exp:
                     iou, m_acc, prec, rec = compute_seg_accuracy(seg_model, synth_data * fetched_data['mask'] , fetched_data['lwo'], ignore=ignore_label, label_map=label_map)
                     iou_list.append(iou.cpu().numpy())
                     m_acc_list.append(m_acc.cpu().numpy())
@@ -300,7 +301,7 @@ def main(runner_cfg_path=None):
             for k ,v in model.get_current_losses(is_eval=True).items():
                 val_losses[k].append(v)
             val_tq.update(1)
-        if not opt.training.isTrain:
+        if not opt.training.isTrain and cl_args.seg_exp:
             avg_m_acc = np.array(m_acc_list).mean()
             iou_avg = np.array(iou_list).mean(axis=0)
             prec_avg = np.array(prec_list).mean(axis=0)
