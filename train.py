@@ -37,6 +37,11 @@ def depth_to_xyz(depth, lidar, tol=1e-8):
     xyz = downsample_point_clouds(xyz, 512)
     return xyz, xyz_out
 
+def subsample(batch, n):
+    if len(batch) <= n:
+        return batch
+    else:
+        return batch[torch.linspace(0, len(batch), n + 1)[:-1].long()]
 
 class M_parser():
     def __init__(self, cfg_path, data_dir, data_dir_B, load, is_test):
@@ -258,8 +263,8 @@ def main(runner_cfg_path=None):
             model.set_input(data)
             model.validate()
             model.calc_supervised_metrics(cl_args.no_inv, lidar_A, lidar, is_transformer)
-            
             fetched_data = fetch_reals(data, lidar_A, device)
+            
             if cl_args.on_input:
                 # assert is_two_dataset == False
                 if 'depth' in fetched_data:
@@ -327,7 +332,7 @@ def main(runner_cfg_path=None):
             if isinstance(v, list):
                 data_dict[k] = torch.cat(v, dim=0)[: N]
         scores = {}
-        scores.update(compute_swd(data_dict["synth-2d"], data_dict["real-2d"]))
+        scores.update(compute_swd(subsample(data_dict["synth-2d"], 2048), subsample(data_dict["real-2d"], 2048)))
         scores["jsd"] = compute_jsd(data_dict["synth-3d"] / 2.0, data_dict["real-3d"] / 2.0)
         scores.update(compute_cov_mmd_1nna(data_dict["synth-3d"], data_dict["real-3d"], 512, ("cd",)))
         torch.cuda.empty_cache()

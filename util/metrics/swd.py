@@ -147,5 +147,6 @@ def compute_swd(
 if __name__ == "__main__":
     a = torch.randn(2048, 1, 64, 256).to("cuda")
     b = torch.randn(2048, 1, 64, 256).to("cuda")
-    score = compute_swd(a, b)
-    print(score)
+    for _ in range(2):
+        score = compute_swd(a, b)
+        print(score)
