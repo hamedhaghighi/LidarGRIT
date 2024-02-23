@@ -333,8 +333,8 @@ def main(runner_cfg_path=None):
                 data_dict[k] = torch.cat(v, dim=0)[: N]
         scores = {}
         scores.update(compute_swd(subsample(data_dict["synth-2d"], 2048), subsample(data_dict["real-2d"], 2048)))
-        scores["jsd"] = compute_jsd(data_dict["synth-3d"] / 2.0, data_dict["real-3d"] / 2.0)
-        scores.update(compute_cov_mmd_1nna(data_dict["synth-3d"], data_dict["real-3d"], 512, ("cd",)))
+        scores["jsd"] = compute_jsd(subsample(data_dict["synth-3d"], 2048) / 2.0, subsample(data_dict["real-3d"], 2048) / 2.0)
+        scores.update(compute_cov_mmd_1nna(subsample(data_dict["synth-3d"], 2048), subsample(data_dict["real-3d"], 2048), 512, ("cd",)))
         torch.cuda.empty_cache()
         if fid_cls is not None:
             scores['fid'] = fid_cls.fid_score(torch.cat(fid_samples, dim=0))
