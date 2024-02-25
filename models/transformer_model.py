@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import yaml
 from .base_model import BaseModel
 from util import *
 from models.vqgan import VQModel
@@ -54,16 +55,21 @@ class TransformerModel(BaseModel):
         if 'reflectance' in opt_m.modality_B:
             self.visual_names.extend(['real_reflectance', 'synth_reflectance'])
             self.eval_metrics.append('reflectance_errors')
-
+        self.visual_names.extend(['z_indices'])
+        
         input_nc_G = np.array([m2ch[m] for m in opt_m.modality_A]).sum()
         output_nc_G = np.array([m2ch[m] for m in opt_m.out_ch]).sum()
         input_nc_D = np.array([m2ch[m] for m in opt_m.modality_B]).sum()
         # same_kernel_size = opt.dataset.dataset_A.img_prop.width == opt.dataset.dataset_A.img_prop.height
-        opt_m_dict = class_to_dict(opt_m)
-        model = VQModel(**opt_m_dict['first_stage_config'], out_ch=opt_m.out_ch).to(self.gpu_ids[0] if len(self.gpu_ids) > 0 else 'cpu')
+        vqckpt_dir = opt_m.vq_ckpt_path.split(os.path.sep)[:-1]
+        vqconfig_path = os.path.join(os.path.sep.join(vqckpt_dir), 'vqgan.yaml')
+        vqcfg_dict=yaml.safe_load(open(vqconfig_path, 'r'))['model']['vqmodel']
+        vqcfg_dict['ckpt_path'] = opt_m.vq_ckpt_path
+        model = VQModel(**vqcfg_dict, out_ch=opt_m.out_ch).to(self.gpu_ids[0] if len(self.gpu_ids) > 0 else 'cpu')
         model = model.eval()
         model.train = disabled_train
         self.first_stage_model = model
+        opt_m_dict = class_to_dict(opt_m)
         cond_stage_config = opt_m_dict['cond_stage_config']
 
         if cond_stage_config == "__is_first_stage__":
@@ -107,12 +113,6 @@ class TransformerModel(BaseModel):
             assert m in data
             data_list.append(data[m])
         self.real_A = torch.cat(data_list, dim=1)
-
-        data_list = []
-        for m in self.opt.model.modality_B:
-            assert m in data
-            data_list.append(data[m])
-        self.real_B = torch.cat(data_list, dim=1)
 
     def top_k_logits(self, logits, k):
         v, ix = torch.topk(logits, k)
@@ -209,27 +209,6 @@ class TransformerModel(BaseModel):
     @torch.no_grad()
     def log_images(self, quant_z, z_indices, c_indices, temperature=None, top_k=None, callback=None, **kwargs):
 
-
-
-        # create a "half"" sample
-        # z_start_indices = z_indices[:,:z_indices.shape[1]//2]
-        # index_sample = self.sample(z_start_indices, c_indices,
-        #                            steps=z_indices.shape[1]-z_start_indices.shape[1],
-        #                            temperature=temperature if temperature is not None else 1.0,
-        #                            sample=True,
-        #                            top_k=top_k if top_k is not None else 100,
-        #                            callback=callback if callback is not None else lambda k: None)
-        # x_sample = self.decode_to_img(index_sample, quant_z.shape)
-
-
-        # # det sample
-        # z_start_indices = z_indices[:, :0]
-        # index_sample = self.sample(z_start_indices, c_indices,
-        #                            steps=z_indices.shape[1],
-        #                            sample=False,
-        #                            callback=callback if callback is not None else lambda k: None)
-        # x_sample_det = self.decode_to_img(index_sample, quant_z.shape)
-        # sample
         z_start_indices = z_indices[:, :0]
         index_sample = self.sample(z_start_indices, c_indices,
                                    steps=z_indices.shape[1],
@@ -237,7 +216,10 @@ class TransformerModel(BaseModel):
                                    sample=True,
                                    top_k=top_k if top_k is not None else 100,
                                    callback=callback if callback is not None else lambda k: None)
+        
         out_dict, _ = self.decode_to_img(index_sample, quant_z.shape)
+        b, _, h, w = quant_z.shape
+        setattr(self, 'z_indices', z_indices.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size)
         for k , v in out_dict.items():
             setattr(self, 'synth_' + k , v)
 
@@ -263,7 +245,7 @@ class TransformerModel(BaseModel):
                                                          device=z_indices.device))
             mask = mask.round().to(dtype=torch.int64)
             r_indices = torch.randint_like(z_indices, self.netTransformer.module.config.vocab_size)
-            a_indices = mask*z_indices+(1-mask)*r_indices
+            a_indices = mask * z_indices+(1-mask)*r_indices
         else:
             a_indices = z_indices
 
