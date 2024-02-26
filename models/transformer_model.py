@@ -55,7 +55,7 @@ class TransformerModel(BaseModel):
         if 'reflectance' in opt_m.modality_B:
             self.visual_names.extend(['real_reflectance', 'synth_reflectance'])
             self.eval_metrics.append('reflectance_errors')
-        self.visual_names.extend(['z_indices'])
+        self.visual_names.extend(['z_indices', 'rec_z_indices'])
         
         input_nc_G = np.array([m2ch[m] for m in opt_m.modality_A]).sum()
         output_nc_G = np.array([m2ch[m] for m in opt_m.out_ch]).sum()
@@ -219,7 +219,8 @@ class TransformerModel(BaseModel):
         
         out_dict, _ = self.decode_to_img(index_sample, quant_z.shape)
         b, _, h, w = quant_z.shape
-        setattr(self, 'z_indices', z_indices.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size)
+        setattr(self, 'rec_z_indices', z_indices.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size)
+        setattr(self, 'z_indices', index_sample.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size)
         for k , v in out_dict.items():
             setattr(self, 'synth_' + k , v)
 
