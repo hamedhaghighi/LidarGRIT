@@ -90,7 +90,8 @@ def check_exp_exists(opt, cfg_args):
             opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_nd_{losscfg.lambda_nd}_L_disc_{losscfg.disc_weight}' \
                 + f'_d_start_{losscfg.disc_start}_L_mask_{losscfg.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}_aug_{has_augment}'
         elif 'transformer' in opt_m.name:
-            opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}' \
+            tr_cfg = opt_m.transformer_config
+            opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}_n_layer_{tr_cfg.n_layer}_rs_type_{opt_m.raster_type}_bs_{opt_t.batch_size}' \
                 + f'_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
                 
     exp_dir = os.path.join(opt_t.checkpoints_dir, opt_t.name)
@@ -227,6 +228,8 @@ def main(runner_cfg_path=None):
                 model.set_input(data)         # unpack data from dataset and apply preprocessing
                 model.optimize_parameters()   # calculate loss functions, get gradients, update network weights
                 if g_steps % opt.training.display_freq == 0:   # display images on visdom and save images to a HTML file
+                    if is_transformer:
+                        model.log_images()
                     current_visuals = model.get_current_visuals()
                     visualizer.display_current_results('train',current_visuals, g_steps,ds_cfg, opt.dataset.dataset_A.name, lidar_A)
 

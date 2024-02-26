@@ -207,8 +207,8 @@ class TransformerModel(BaseModel):
         return x
 
     @torch.no_grad()
-    def log_images(self, quant_z, z_indices, c_indices, temperature=None, top_k=None, callback=None, **kwargs):
-
+    def log_images(self, temperature=None, top_k=None, callback=None, **kwargs):
+        quant_z, z_indices, c_indices = self.quant_z, self.z_indices, self.c_indices
         z_start_indices = z_indices[:, :0]
         index_sample = self.sample(z_start_indices, c_indices,
                                    steps=z_indices.shape[1],
@@ -240,7 +240,7 @@ class TransformerModel(BaseModel):
         # one step to produce the logits
         quant_z, z_indices = self.encode_to_z(self.real_A)
         _, c_indices = self.encode_to_c(self.real_A, quant_z.shape)
-
+        self.quant_z, self.z_indices, self.c_indices = quant_z, z_indices, c_indices
         if self.isTrain and self.pkeep < 1.0:
             mask = torch.bernoulli(self.pkeep*torch.ones(z_indices.shape,
                                                          device=z_indices.device))
@@ -249,9 +249,6 @@ class TransformerModel(BaseModel):
             a_indices = mask * z_indices+(1-mask)*r_indices
         else:
             a_indices = z_indices
-
-        self.log_images(quant_z, z_indices, c_indices)
-
         cz_indices = torch.cat((c_indices, a_indices), dim=1)
         # target includes all sequence elements (no need to handle first one
         # differently because we are conditioning)
