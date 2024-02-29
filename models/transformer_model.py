@@ -44,7 +44,7 @@ class TransformerModel(BaseModel):
         
         opt_m = opt.model
         opt_t = opt.training
-        self.eval_metrics = ['cd', 'depth_accuracies', 'depth_errors', 'val_t'] 
+        self.eval_metrics = ['val_t'] + ([] if self.isTrain else ['cd', 'depth_accuracies', 'depth_errors'])
         self.be_unconditional = True
         self.sos_token = 0
         self.learning_rate = opt_t.lr * opt_t.batch_size
@@ -219,8 +219,8 @@ class TransformerModel(BaseModel):
         
         out_dict, _ = self.decode_to_img(index_sample, quant_z.shape)
         b, _, h, w = quant_z.shape
-        setattr(self, 'rec_z_indices', z_indices.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size)
-        setattr(self, 'z_indices', index_sample.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size)
+        self.rec_z_indices = z_indices.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size
+        self.z_indices = index_sample.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size
         for k , v in out_dict.items():
             setattr(self, 'synth_' + k , v)
 
@@ -233,7 +233,9 @@ class TransformerModel(BaseModel):
     def validate(self):
         logits, target = self.forward()
         loss_t = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
-        setattr(self, 'val_t', loss_t.item())
+        self.val_t = loss_t.item()
+        if not self.isTrain:
+            self.log_images()
 
 
     def forward(self):
@@ -264,7 +266,6 @@ class TransformerModel(BaseModel):
         logits, target = self.forward()            
         self.optimizer.zero_grad()        # set G's gradients to zero
         self.loss_t = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
-        setattr(self, 'loss_t', self.loss_t)
         self.loss_t.backward()                   # calculate graidents for G
         self.optimizer.step()             # udpate G's weights
         self.global_step += 1

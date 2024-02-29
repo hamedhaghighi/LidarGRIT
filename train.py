@@ -22,11 +22,23 @@ from util.metrics.swd import compute_swd
 from util.metrics.seg_accuracy import compute_seg_accuracy
 from util.metrics.fpd import FPD   
 import random
-
+import hashlib
 
 os.environ['LD_PRELOAD'] = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6" 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+
+def hash_string(input_string):
+    # Encode the input string as bytes
+    input_bytes = input_string.encode('utf-8')
+    
+    # Hash the bytes using SHA-256
+    hashed_bytes = hashlib.sha256(input_bytes)
+    
+    # Get the hexadecimal representation of the hash
+    hashed_string = hashed_bytes.hexdigest()
+    
+    return hashed_string
 
 
 def depth_to_xyz(depth, lidar, tol=1e-8):
@@ -86,13 +98,14 @@ def check_exp_exists(opt, cfg_args):
                 + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
         elif 'vqgan' in opt_m.name:
             losscfg = opt_m.vqmodel.lossconfig.params
+            ddcfg = opt_m.vqmodel.ddconfig
             has_augment = len(opt_m.augment) > 0
             opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_nd_{losscfg.lambda_nd}_L_disc_{losscfg.disc_weight}' \
-                + f'_d_start_{losscfg.disc_start}_L_mask_{losscfg.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}_aug_{has_augment}'
+                + f'_d_start_{losscfg.disc_start}_L_mask_{losscfg.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}_aug_{has_augment}_sym_{ddcfg.symmetric}_cd_size_{opt_m.vqmodel.n_embed}'
         elif 'transformer' in opt_m.name:
             tr_cfg = opt_m.transformer_config
-            opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}_n_layer_{tr_cfg.n_layer}_rs_type_{opt_m.raster_type}_bs_{opt_t.batch_size}' \
-                + f'_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
+            opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}_n_layer_{tr_cfg.n_layer}_rs_type_{opt_m.raster_type}_bs_{opt_t.batch_size}_vq_ckpt_{hash_string(opt_m.vq_ckpt_path)[:5]}' \
+                + f'_n_head_{tr_cfg.n_head}_n_embd_{tr_cfg.n_embd}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bk_size_{tr_cfg.block_size}'
                 
     exp_dir = os.path.join(opt_t.checkpoints_dir, opt_t.name)
     if not opt_t.continue_train and opt_t.isTrain:
@@ -265,44 +278,47 @@ def main(runner_cfg_path=None):
             data = next(val_dl_iter)
             model.set_input(data)
             model.validate()
-            model.calc_supervised_metrics(cl_args.no_inv, lidar_A, lidar, is_transformer)
-            fetched_data = fetch_reals(data, lidar_A, device)
-            
-            if cl_args.on_input:
-                # assert is_two_dataset == False
-                if 'depth' in fetched_data:
-                    synth_depth = fetched_data['depth']
-                if 'reflectance' in fetched_data:
-                    synth_reflectance = fetched_data['reflectance']
-                if 'mask' in fetched_data:
-                    synth_mask = fetched_data['mask']
-            else:
-                if hasattr(model, 'synth_reflectance'):
-                    synth_reflectance = model.synth_reflectance 
-                if hasattr(model, 'synth_mask'):
-                    synth_mask = model.synth_mask
-                if hasattr(model, 'synth_depth') and not cl_args.no_inv:
-                    synth_depth = model.synth_depth
+            if not is_transformer or not opt.training.isTrain:
+                model.calc_supervised_metrics(cl_args.no_inv, lidar_A, lidar, is_transformer)
+                fetched_data = fetch_reals(data, lidar_A, device)
+                
+                if cl_args.on_input:
+                    # assert is_two_dataset == False
+                    if 'depth' in fetched_data:
+                        synth_depth = fetched_data['depth']
+                    if 'reflectance' in fetched_data:
+                        synth_reflectance = fetched_data['reflectance']
+                    if 'mask' in fetched_data:
+                        synth_mask = fetched_data['mask']
                 else:
-                    synth_depth = fetched_data['depth'] * synth_mask
-            data_dict['synth-2d'].append(synth_depth)
-            ds_xyz , xyz = depth_to_xyz(synth_depth, lidar)
-            data_dict['synth-3d'].append(ds_xyz)
-            fpd_points.append(xyz)
-            if fid_cls is not None and len(fid_samples) < cl_args.n_fid:
-                synth_depth = tanh_to_sigmoid(synth_depth)
-                synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
-                synth_reflectance = tanh_to_sigmoid(synth_reflectance)
-                synth_data = torch.cat([synth_depth, synth_points, synth_reflectance, synth_mask], dim=1)
-                fid_samples.append(synth_data)
-                if not opt.training.isTrain and cl_args.seg_exp:
-                    iou, m_acc, prec, rec = compute_seg_accuracy(seg_model, synth_data * fetched_data['mask'] , fetched_data['lwo'], ignore=ignore_label, label_map=label_map)
-                    iou_list.append(iou.cpu().numpy())
-                    m_acc_list.append(m_acc.cpu().numpy())
-                    prec_list.append(prec.cpu().numpy())
-                    rec_list.append(rec.cpu().numpy())
+                    if hasattr(model, 'synth_reflectance'):
+                        synth_reflectance = model.synth_reflectance 
+                    if hasattr(model, 'synth_mask'):
+                        synth_mask = model.synth_mask
+                    if hasattr(model, 'synth_depth') and not cl_args.no_inv:
+                        synth_depth = model.synth_depth
+                    else:
+                        synth_depth = fetched_data['depth'] * synth_mask
+                data_dict['synth-2d'].append(synth_depth)
+                ds_xyz , xyz = depth_to_xyz(synth_depth, lidar)
+                data_dict['synth-3d'].append(ds_xyz)
+                fpd_points.append(xyz)
+                if fid_cls is not None and len(fid_samples) < cl_args.n_fid:
+                    synth_depth = tanh_to_sigmoid(synth_depth)
+                    synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
+                    synth_reflectance = tanh_to_sigmoid(synth_reflectance)
+                    synth_data = torch.cat([synth_depth, synth_points, synth_reflectance, synth_mask], dim=1)
+                    fid_samples.append(synth_data)
+                    if not opt.training.isTrain and cl_args.seg_exp:
+                        iou, m_acc, prec, rec = compute_seg_accuracy(seg_model, synth_data * fetched_data['mask'] , fetched_data['lwo'], ignore=ignore_label, label_map=label_map)
+                        iou_list.append(iou.cpu().numpy())
+                        m_acc_list.append(m_acc.cpu().numpy())
+                        prec_list.append(prec.cpu().numpy())
+                        rec_list.append(rec.cpu().numpy())
 
             if i == dis_batch_ind:
+                if is_transformer and opt.training.isTrain:
+                    model.log_images()
                 current_visuals = model.get_current_visuals()
                 visualizer.display_current_results(tag, current_visuals, g_steps, ds_cfg, opt.dataset.dataset_A.name, lidar_A)
 
@@ -330,24 +346,24 @@ def main(runner_cfg_path=None):
         
         ##### calculating unsupervised metrics
 
-
-        for k ,v in data_dict.items():
-            if isinstance(v, list):
-                data_dict[k] = torch.cat(v, dim=0)[: N]
-        scores = {}
-        scores.update(compute_swd(subsample(data_dict["synth-2d"], 2048), subsample(data_dict["real-2d"], 2048)))
-        scores["jsd"] = compute_jsd(subsample(data_dict["synth-3d"], 2048) / 2.0, subsample(data_dict["real-3d"], 2048) / 2.0)
-        scores.update(compute_cov_mmd_1nna(subsample(data_dict["synth-3d"], 2048), subsample(data_dict["real-3d"], 2048), 512, ("cd",)))
-        torch.cuda.empty_cache()
-        if fid_cls is not None:
-            scores['fid'] = fid_cls.fid_score(torch.cat(fid_samples, dim=0))
-        if fpd_cls is not None:
-            scores['fpd'] = fpd_cls.fpd_score(torch.cat(fpd_points, dim=0))
-        if losses["depth/rmse"] < min_rmse and opt.training.isTrain:
-            min_rmse = losses["depth/rmse"]
+        if not is_transformer or not opt.training.isTrain:
+            for k ,v in data_dict.items():
+                if isinstance(v, list):
+                    data_dict[k] = torch.cat(v, dim=0)[: N]
+            scores = {}
+            scores.update(compute_swd(subsample(data_dict["synth-2d"], 2048), subsample(data_dict["real-2d"], 2048)))
+            scores["jsd"] = compute_jsd(subsample(data_dict["synth-3d"], 2048) / 2.0, subsample(data_dict["real-3d"], 2048) / 2.0)
+            scores.update(compute_cov_mmd_1nna(subsample(data_dict["synth-3d"], 2048), subsample(data_dict["real-3d"], 2048), 512, ("cd",)))
+            torch.cuda.empty_cache()
+            if fid_cls is not None:
+                scores['fid'] = fid_cls.fid_score(torch.cat(fid_samples, dim=0))
+            if fpd_cls is not None:
+                scores['fpd'] = fpd_cls.fpd_score(torch.cat(fpd_points, dim=0))
+            visualizer.plot_current_losses('unsupervised_metrics', epoch, scores, g_steps)
+            visualizer.print_current_losses('unsupervised_metrics', epoch, e_steps, scores, val_tq)
+        if losses["val_t" if is_transformer else "depth/rmse"] < min_rmse and opt.training.isTrain:
+            min_rmse = losses["val_t" if is_transformer else "depth/rmse"]
             model.save_networks('best')
-        visualizer.plot_current_losses('unsupervised_metrics', epoch, scores, g_steps)
-        visualizer.print_current_losses('unsupervised_metrics', epoch, e_steps, scores, val_tq)
         if opt.training.isTrain:
             model.update_learning_rate()    # update learning rates in the beginning of every epoch.
         epoch_tq.update(1)
