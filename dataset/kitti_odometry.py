@@ -19,6 +19,7 @@ import torchvision.transforms as transforms
 def car2hom(pc):
     return np.concatenate([pc[:, :3], np.ones((pc.shape[0], 1), dtype=pc.dtype)], axis=-1)
 
+
 class  KITTIOdometry(torch.utils.data.Dataset):
     def __init__(
         self,
@@ -33,7 +34,8 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         limited_view=False,
         finesize=None,
         norm_label=False,
-        is_ref_semposs=False):
+        is_ref_semposs=False,
+        do_augment=False):
         super().__init__()
         self.root = osp.join(root, "sequences")
         if '/' in split:
@@ -59,6 +61,14 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         self.finesize = finesize
         self.norm_label = norm_label
         self.is_ref_semposs = is_ref_semposs
+        # Compose the transforms
+        self.transform_list = [
+            transforms.ToTensor(),
+            transforms.Resize(self.shape, TF.InterpolationMode.NEAREST) 
+            ]
+        
+        self.transform_aug_list = [transforms.RandomRotation(degrees=45), transforms.RandomVerticalFlip(p=0.5), transforms.RandomHorizontalFlip(p=0.5),\
+                                             transforms.RandomAffine(degrees=30, translate=(0.1, 0.1), scale=(0.9, 1.1))] if do_augment and split == 'train' else None
         if self.has_rgb:
             self.has_rgb = True
             calib = self.load_calib()
@@ -152,6 +162,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
 
     def preprocess(self, out):
         out["depth"] = np.linalg.norm(out["points"], ord=2, axis=2)
+        # fill in label
         if 'label' in out and self.fill_in_label:
           fill_in_mask = ~ (out["depth"] > 0.0)
           out['label'] = self.fill(out['label'], fill_in_mask)
@@ -162,6 +173,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
                 out['reflectance'] = self.fill(out['reflectance'], fill_in_mask)
             if 'rgb' in out:
                 out['rgb'] = self.fill(out['rgb'], fill_in_mask)
+        ## create mask
         mask = (
             (out["depth"] > 0.0)
             & (out["depth"] > self.min_depth)
@@ -171,6 +183,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         out["depth"] /= self.max_depth - self.min_depth
         out["mask"] = mask
         out["points"] /= self.max_depth  # unit space
+        ## masking out modalities other than  label or rgb
         for key in out.keys():
             if (key == 'label' and self.fill_in_label) or key == 'rgb':
                 continue
@@ -181,18 +194,26 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         return out
 
     def transform(self, out):
-        flip = self.flip and random.random() > 0.5
-        if self.finesize is not None:
-            i, j, h, w = transforms.RandomCrop.get_params(torch.zeros(1, self.shape[0], self.shape[1]), output_size=(self.finesize, self.finesize))
-        for k, v in out.items():
-            v = TF.to_tensor(v)
-            if flip:
-                v = TF.hflip(v)
-            v = TF.resize(v, self.shape, TF.InterpolationMode.NEAREST)
-            if self.finesize is not None:
-                v = TF.crop(v, i, j, h, w)
-            out[k] = v
-        return out
+        concatenated_image = np.concatenate([image[..., None] if len(image.shape) < 3 else image for image in out.values()], axis=-1)
+        for trfm in self.transform_list:
+            concatenated_image = trfm(concatenated_image)
+        
+        if random.random() < 0.5 and self.transform_aug_list is not None:
+            for trfm in self.transform_aug_list:
+                concatenated_image = trfm(concatenated_image)
+        ret = {}
+        pre_idx = 0
+        for key, image in out.items():
+            num_channels = 1 if len(image.shape) < 3 else image.shape[-1]
+            transformed_image = concatenated_image[pre_idx: pre_idx + num_channels]
+            ret[key] = transformed_image
+            pre_idx += num_channels
+        
+        # for k, v in out.items():
+        #     v = TF.to_tensor(v)
+        #     v = TF.resize(v, self.shape, TF.InterpolationMode.NEAREST)
+        #     out[k] = v
+        return ret
 
     def image_to_pcl(self, rgb_image, point_cloud):
         rgb = np.zeros((len(point_cloud),3), dtype=np.int32)

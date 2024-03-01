@@ -69,7 +69,8 @@ def get_dataset(dataset_name, cfg, ds_cfg, data_dir, split, limited_view=False, 
           limited_view=limited_view,
           finesize=cfg.img_prop.finesize if (split == 'train' and cfg.img_prop.finesize != -1) else None,
           norm_label=norm_label,
-          is_ref_semposs=is_ref_semposs
+          is_ref_semposs=is_ref_semposs,
+          do_augment= cfg.do_augment
       )
   elif dataset_name =='nuscene':
     dataset = NuScene(

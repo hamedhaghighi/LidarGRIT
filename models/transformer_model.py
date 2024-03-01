@@ -57,9 +57,6 @@ class TransformerModel(BaseModel):
             self.eval_metrics.append('reflectance_errors')
         self.visual_names.extend(['z_indices', 'rec_z_indices'])
         
-        input_nc_G = np.array([m2ch[m] for m in opt_m.modality_A]).sum()
-        output_nc_G = np.array([m2ch[m] for m in opt_m.out_ch]).sum()
-        input_nc_D = np.array([m2ch[m] for m in opt_m.modality_B]).sum()
         # same_kernel_size = opt.dataset.dataset_A.img_prop.width == opt.dataset.dataset_A.img_prop.height
         vqckpt_dir = opt_m.vq_ckpt_path.split(os.path.sep)[:-1]
         vqconfig_path = os.path.join(os.path.sep.join(vqckpt_dir), 'vqgan.yaml')

@@ -80,6 +80,7 @@ class VQModel(nn.Module):
             x = x[..., None]
         x = x.permute(0, 3, 1, 2).to(memory_format=torch.contiguous_format)
         return x.float()
+    
     def training_step(self, real_A, fake_B, optimizer_idx, global_step, aug_cls, qloss=None, lidar=None, mask_logits=None, real_mask=None):
 
         if optimizer_idx == 0:
