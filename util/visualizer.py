@@ -124,6 +124,7 @@ class Visualizer():
         with open(self.log_name, "a") as log_file:
             now = time.strftime("%c")
             log_file.write('================ Training Loss (%s) ================\n' % now)
+        self.writer.add_text('config', yaml.dump(class_to_dict(opt)).replace('\n', '  \n'))
         self.norm_label = opt.model.norm_label
         # wandb.init(project='vqgan', config=class_to_dict(opt))
 

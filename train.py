@@ -64,10 +64,21 @@ class M_parser():
             setattr(self, m, getattr(dict_class, m))
         if data_dir != '':
             self.dataset.dataset_A.data_dir = data_dir
-
         self.training.test = is_test
         self.model.isTrain = self.training.isTrain = not self.training.test
         self.training.epoch_decay = self.training.n_epochs//2
+        if 'transformer' in self.model.name:
+            vqckpt_dir = self.model.vq_ckpt_path.split(os.path.sep)[:-1]
+            vqconfig_path = os.path.join(os.path.sep.join(vqckpt_dir), 'vqgan.yaml')
+            vqcfg_dict = yaml.safe_load(open(vqconfig_path, 'r'))
+            self.model.modality_A = vqcfg_dict['model']['modality_A']
+            self.model.modality_B = vqcfg_dict['model']['modality_B']
+            self.model.out_ch = vqcfg_dict['model']['out_ch']
+            self.model.transformer_config.vocab_size = vqcfg_dict['model']['vqmodel']['n_embed']
+            H , W = vqcfg_dict['dataset']['dataset_A']['img_prop']['height'], vqcfg_dict['dataset']['dataset_A']['img_prop']['width']
+            symmetric = vqcfg_dict['model']['vqmodel']['ddconfig']['symmetric']
+            l  = len(vqcfg_dict['model']['vqmodel']['ddconfig']['ch_mult']) - 1
+            self.model.transformer_config.block_size = (H//2**l) * (W//2**l) if symmetric else (H//2**(l//2 + l%2)) * (W//2**l)
 
 
 
@@ -93,20 +104,7 @@ def check_exp_exists(opt, cfg_args):
     elif cfg_args.fast_test:
         opt_t.name = 'test_trans' if 'transformer' in opt.model.name else 'test'
     else:
-        if 'pix2pix' in opt_m.name:
-            opt_t.name = f'pix2pix_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}_L_nd_{opt_m.lambda_nd}' \
-                + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
-        elif 'vqgan' in opt_m.name:
-            losscfg = opt_m.vqmodel.lossconfig.params
-            ddcfg = opt_m.vqmodel.ddconfig
-            has_augment = len(opt_m.augment) > 0
-            opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_nd_{losscfg.lambda_nd}_L_disc_{losscfg.disc_weight}' \
-                + f'_d_start_{losscfg.disc_start}_L_mask_{losscfg.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}_aug_{has_augment}_sym_{ddcfg.symmetric}_cd_size_{opt_m.vqmodel.n_embed}'
-        elif 'transformer' in opt_m.name:
-            tr_cfg = opt_m.transformer_config
-            opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}_n_layer_{tr_cfg.n_layer}_rs_type_{opt_m.raster_type}_bs_{opt_t.batch_size}_vq_ckpt_{hash_string(opt_m.vq_ckpt_path)[:5]}' \
-                + f'_n_head_{tr_cfg.n_head}_n_embd_{tr_cfg.n_embd}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bk_size_{tr_cfg.block_size}'
-                
+        opt_t.name = hash_string(yaml.dump(class_to_dict(opt)))
     exp_dir = os.path.join(opt_t.checkpoints_dir, opt_t.name)
     if not opt_t.continue_train and opt_t.isTrain:
         if os.path.exists(exp_dir):
