@@ -99,7 +99,10 @@ def point_cloud_to_xyz_image(points, H=64, W=2048, fov_up=3.0, fov_down=-25.0, i
         grid_h = np.zeros_like(x)
         for i in reversed(range(len(start_inds))):
             grid_h[inds[i] : inds[i + 1]] = line_idx
-            line_idx -= 1
+            if line_idx >= 0:
+                line_idx -= 1
+            else:
+                break
         
     # horizontal grid
     yaw = -np.arctan2(y, x)  # [-pi,pi]

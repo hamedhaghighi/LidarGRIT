@@ -266,7 +266,7 @@ if __name__ == "__main__":
     DATA =  make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{args.dataset_name}_cfg.yml', 'r')))
     H, W = DATA.height, DATA.width
     if args.project:
-        if args.dataset_name in ['kitti', 'carla', 'semanticPOSS']:
+        if args.dataset_name in ['kitti', 'carla', 'semanticPOSS',]:
             # calib = load_calib(osp.join(args.root_dir, "dataset/sequences"))
             calib = None
             # H, W = 64, 2048
@@ -283,6 +283,21 @@ if __name__ == "__main__":
                 )
             
          
+        if args.dataset_name in ['kitti_360']:
+            # calib = load_calib(osp.join(args.root_dir, "dataset/sequences"))
+            calib = None
+            # H, W = 64, 2048
+            for subset in [0, 2, 3, 4, 5, 6, 7, 9, 10]:
+                wild_card = f"*_{subset:04d}_sync/velodyne_points/data/*.bin"
+                point_paths = sorted(glob(osp.join(args.root_dir, wild_card)))
+                joblib.Parallel(
+                    n_jobs=multiprocessing.cpu_count(), verbose=10, pre_dispatch="all"
+                )(
+                    [
+                        joblib.delayed(process_point_clouds)(point_path, H, W, args.dest_dir, calib, args.dataset_name)
+                        for point_path in point_paths
+                    ]
+                )
 
         elif args.dataset_name == 'nuscene':
             nusc = NuScenes(version = 'v1.0-mini', dataroot = args.root_dir, verbose = True)
@@ -304,7 +319,7 @@ if __name__ == "__main__":
                 ]
             ) 
     else:
-        if args.dataset_name in ['kitti', 'carla', 'semanticPOSS']:
+        if args.dataset_name in ['kitti', 'carla', 'semanticPOSS', 'kitti_360']:
             dataset = KITTIOdometry(
             args.root_dir,
             'train',

@@ -15,7 +15,7 @@ from util import _map
 class Segmentator(nn.Module):
   def __init__(self, path_append="", strict=False, dataset_name = 'kitti', cfg_path=None):
     super().__init__()
-    if dataset_name == 'kitti':
+    if 'kitti' in dataset_name:
       path = os.path.join('rangenet', 'rangenet_weights')
       self.ARCH = yaml.safe_load(open('configs/arch_cfg.yaml', 'r'))
       self.DATA = yaml.safe_load(open('configs/data_cfg.yaml', 'r'))

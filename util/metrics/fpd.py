@@ -10,7 +10,7 @@ from util.metrics.pointnet import pretrained_pointnet
 from tqdm import trange, tqdm
 
 class FPD():
-  def __init__(self, train_dataset, dataset_name, lidar, max_sample=5000, batch_size=8):
+  def __init__(self, train_dataset, dataset_name, lidar, max_sample=10000, batch_size=8):
     self.path = './'
     self.batch_size = batch_size
     ds = train_dataset

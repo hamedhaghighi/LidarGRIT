@@ -213,7 +213,7 @@ class Visualizer():
         message = 'Validation\n' if phase == 'val' else ''
         message = message + '(epoch: %d, iters: %d) ' % (epoch, iters)
         for k, v in losses.items():
-            message += '%s: %.3f ' % (k, v)
+            message += '%s: %.4f ' % (k, v)
         if not tq:
             print(message)  # print the message
         else:

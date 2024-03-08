@@ -37,7 +37,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         is_ref_semposs=False,
         do_augment=False):
         super().__init__()
-        self.root = osp.join(root, "sequences")
+        self.root = root if name == 'kitti_360' else osp.join(root, "sequences")
         if '/' in split:
             s1 , s2 = split.split('/')
             self.subsets = np.array(getattr(DATA.split, s1) + getattr(DATA.split, s2))
@@ -66,9 +66,8 @@ class  KITTIOdometry(torch.utils.data.Dataset):
             transforms.ToTensor(),
             transforms.Resize(self.shape, TF.InterpolationMode.NEAREST) 
             ]
-        
-        self.transform_aug_list = [transforms.RandomRotation(degrees=45), transforms.RandomVerticalFlip(p=0.5), transforms.RandomHorizontalFlip(p=0.5),\
-                                             transforms.RandomAffine(degrees=30, translate=(0.1, 0.1), scale=(0.9, 1.1))] if do_augment and split == 'train' else None
+        self.transform_aug_list = [transforms.RandomRotation(degrees=45, fill=1.0), transforms.RandomVerticalFlip(p=0.5), transforms.RandomHorizontalFlip(p=0.5),\
+                                             transforms.RandomAffine(degrees=30, translate=(0.1, 0.1), scale=(0.9, 1.1), fill=1.0)] if do_augment and split == 'train' else None
         if self.has_rgb:
             self.has_rgb = True
             calib = self.load_calib()
@@ -150,16 +149,17 @@ class  KITTIOdometry(torch.utils.data.Dataset):
     def load_datalist(self):
         datalist = []
         for subset in self.subsets:
-            subset_dir = osp.join(self.root, str(subset).zfill(2))
-            sub_point_paths = sorted(glob(osp.join(subset_dir, "velodyne/*")))
+            wild_card = f"*_{subset:04d}_sync/velodyne_points/data/*"\
+                  if self.name == 'kitti_360' else osp.join(str(subset).zfill(2), "velodyne/*")
+            subset_dir =  osp.join(self.root, wild_card)
+            sub_point_paths = sorted(glob(subset_dir))
             datalist += list(sub_point_paths)
         self.datalist = datalist
         if self.has_label:
             self.label_list = [d.replace('velodyne', 'labels').replace('bin' if self.is_raw else 'npy', 'label' if self.is_raw else 'png') for d in self.datalist]
         if self.has_rgb:
             self.rgb_list = [d.replace('velodyne', 'image_2').replace('bin' if self.is_raw else 'npy', 'png') for d in self.datalist]
-        self.tag_list = [d.replace('velodyne', 'tag').replace('bin', 'tag') for d in self.datalist] if self.name == 'semanticPOSS' and self.is_raw else None
-
+       
     def preprocess(self, out):
         out["depth"] = np.linalg.norm(out["points"], ord=2, axis=2)
         # fill in label
@@ -197,7 +197,6 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         concatenated_image = np.concatenate([image[..., None] if len(image.shape) < 3 else image for image in out.values()], axis=-1)
         for trfm in self.transform_list:
             concatenated_image = trfm(concatenated_image)
-        
         if random.random() < 0.5 and self.transform_aug_list is not None:
             for trfm in self.transform_aug_list:
                 concatenated_image = trfm(concatenated_image)
@@ -235,8 +234,6 @@ class  KITTIOdometry(torch.utils.data.Dataset):
             if self.has_label:
                 labels_path = self.label_list[index]
                 sem_label = np.array(Image.open(labels_path))
-                if self.name == 'semanticPOSS':
-                    sem_label = _map(sem_label, self.DATA.learning_map)
                 sem_label = _map(sem_label, self.DATA.m_learning_map)
                 points = np.concatenate([points, sem_label.astype('float32')[..., None]], axis=-1)
             if self.has_rgb:
@@ -251,7 +248,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
             point_cloud = np.fromfile(points_path, dtype=np.float32).reshape((-1, 4))
             if self.has_label:
                 labels_path = self.label_list[index]
-                if self.name in ['kitti', 'carla', 'semanticPOSS']:
+                if self.name in ['kitti', 'carla']:
                     label = np.fromfile(labels_path, dtype=np.int32)
                     sem_label = label & 0xFFFF 
                     sem_label = _map(_map(sem_label, self.DATA.learning_map), self.DATA.m_learning_map)
@@ -267,15 +264,14 @@ class  KITTIOdometry(torch.utils.data.Dataset):
             H , W = self.DATA.height, self.DATA.width
             fov_up, fov_down = self.DATA.fov_up, self.DATA.fov_down
             
-            tag = np.fromfile(self.tag_list[index], dtype = np.bool) if self.tag_list is not None else None
-            points, _ = point_cloud_to_xyz_image(point_cloud, H=H, W=W, fov_down=fov_down, fov_up=fov_up, is_sorted=self.is_sorted, limited_view=self.limited_view, tag=tag)
+            points, _ = point_cloud_to_xyz_image(point_cloud, H=H, W=W, fov_down=fov_down, fov_up=fov_up, is_sorted=self.is_sorted, limited_view=self.limited_view)
             
         out = {}
         out["points"] = points[..., :3]
         if "reflectance" in self.modality:
-            out["reflectance"] = points[..., [3]]/255.0 if self.name == 'semanticPOSS' else points[..., [3]]
+            out["reflectance"] = points[..., [3]]
         if "label" in self.modality:
-            out["label"] = points[..., [4]] / (10.0 if self.name == 'semanticPOSS' else 19.0) if self.norm_label else points[..., [4]]
+            out["label"] = points[..., [4]]
             # if self.name == 'carla' :
             #     out['label'] = _map(out['label'].astype('int'), self.DATA.kitti_to_POSS_map).astype(np.float32)
             out['lwo'] = points[..., [4]]

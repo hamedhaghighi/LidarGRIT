@@ -56,7 +56,7 @@ class BinaryScan(Dataset):
     return lut[label]
 
 def get_dataset(dataset_name, cfg, ds_cfg, data_dir, split, limited_view=False, is_ref_semposs=False, norm_label=False):
-  if dataset_name in ['kitti', 'carla', 'synthlidar', 'semanticPOSS']:
+  if dataset_name in ['kitti', 'carla', 'synthlidar', 'kitti_360']:
     dataset = KITTIOdometry(
           data_dir,
           split,

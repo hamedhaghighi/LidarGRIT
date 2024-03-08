@@ -20,7 +20,8 @@ from util.metrics.cov_mmd_1nna import compute_cov_mmd_1nna
 from util.metrics.jsd import compute_jsd
 from util.metrics.swd import compute_swd
 from util.metrics.seg_accuracy import compute_seg_accuracy
-from util.metrics.fpd import FPD   
+from util.metrics.fpd import FPD 
+from util.metrics import bev  
 import random
 import hashlib
 
@@ -179,25 +180,23 @@ def main(runner_cfg_path=None):
     min_rmse = 10000
     if cl_args.ref_dataset_name == 'kitti':
         ignore_label = [0, 2, 3, 4, 6, 5, 7, 8, 10, 12, 16]
-    elif cl_args.ref_dataset_name == 'semanticPOSS':
-        ignore_label = [0, 3, 9]
-
     is_ref_semposs = cl_args.ref_dataset_name == 'semanticPOSS'
     train_dl, train_dataset = get_data_loader(opt, 'train', opt.training.batch_size,is_ref_semposs=is_ref_semposs)
     val_dl, val_dataset = get_data_loader(opt, 'val', opt.training.batch_size, shuffle=False, is_ref_semposs=is_ref_semposs)  
     # val and test are similar splits during training
     test_dl, test_dataset = get_data_loader(opt, 'test', opt.training.batch_size, dataset_name=cl_args.ref_dataset_name, two_dataset_enabled=False, is_ref_semposs=is_ref_semposs)
     with torch.no_grad():
-        seg_model = Segmentator(dataset_name=cl_args.ref_dataset_name if cl_args.seg_cfg_path == '' else 'synth', cfg_path=cl_args.seg_cfg_path).to(device)
+        seg_model = Segmentator(dataset_name=cl_args.ref_dataset_name\
+                                 if cl_args.seg_cfg_path == '' else 'synth', cfg_path=cl_args.seg_cfg_path).to(device)
     model = create_model(opt, lidar_A, None)      # create a model given opt.model and other options
     model.set_seg_model(seg_model)               # regular setup: load and print networks; create schedulers
     ## initilisation of the model for netF in cut
     train_dl_iter = iter(train_dl); 
     data = next(train_dl_iter)
     model.setup(opt.training)
-    fid_cls = FID(seg_model, train_dataset, cl_args.ref_dataset_name, lidar_A) \
+    fid_cls = FID(seg_model, test_dataset, cl_args.ref_dataset_name, lidar_A) \
         if (cl_args.ref_dataset_name!= '' and 'reflectance' in opt.model.modality_B) else None
-    fpd_cls = FPD(train_dataset, cl_args.ref_dataset_name, lidar_A) if cl_args.ref_dataset_name!= '' else None
+    fpd_cls = FPD(test_dataset, cl_args.ref_dataset_name, lidar_A) if cl_args.ref_dataset_name!= '' else None
     n_test_batch = 2 if cl_args.fast_test else  len(test_dl)
     test_dl_iter = iter(test_dl)
     data_dict = defaultdict(list)
@@ -207,7 +206,12 @@ def main(runner_cfg_path=None):
         data = next(test_dl_iter)
         data = fetch_reals(data, lidar_ref, device, opt.model.norm_label)
         data_dict['real-2d'].append(data['depth'])
-        data_dict['real-3d'].append(depth_to_xyz(data['depth'], lidar_ref)[0])
+        xyz_ds, xyz = depth_to_xyz(data['depth'], lidar_ref)
+        data_dict['real-3d'].append(xyz_ds)
+        if not opt.training.isTrain:
+            for pc in xyz.transpose(1, 2):
+                hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
+                data_dict['real-bev'].append(hist[None, ...])
         test_tq.update(1)
     epoch_tq = tqdm.tqdm(total=opt.training.n_epochs, desc='Epoch', position=1)
     start_from_epoch = model.schedulers[0].last_epoch if opt.training.continue_train else 0 
@@ -298,8 +302,12 @@ def main(runner_cfg_path=None):
                     else:
                         synth_depth = fetched_data['depth'] * synth_mask
                 data_dict['synth-2d'].append(synth_depth)
-                ds_xyz , xyz = depth_to_xyz(synth_depth, lidar)
-                data_dict['synth-3d'].append(ds_xyz)
+                xyz_ds , xyz = depth_to_xyz(synth_depth, lidar)
+                data_dict['synth-3d'].append(xyz_ds)
+                if not opt.training.isTrain:
+                    for pc in xyz.transpose(1, 2):
+                        hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
+                        data_dict['synth-bev'].append(hist[None, ...])
                 fpd_points.append(xyz)
                 if fid_cls is not None and len(fid_samples) < cl_args.n_fid:
                     synth_depth = tanh_to_sigmoid(synth_depth)
@@ -352,6 +360,9 @@ def main(runner_cfg_path=None):
             scores.update(compute_swd(subsample(data_dict["synth-2d"], 2048), subsample(data_dict["real-2d"], 2048)))
             scores["jsd"] = compute_jsd(subsample(data_dict["synth-3d"], 2048) / 2.0, subsample(data_dict["real-3d"], 2048) / 2.0)
             scores.update(compute_cov_mmd_1nna(subsample(data_dict["synth-3d"], 2048), subsample(data_dict["real-3d"], 2048), 512, ("cd",)))
+            if not opt.training.isTrain:
+                 scores["jsd-bev"] = bev.compute_jsd_2d(data_dict["real-bev"], data_dict["synth-bev"])
+                 scores["mmd-bev"] = bev.compute_mmd_2d(data_dict["real-bev"], data_dict["synth-bev"])
             torch.cuda.empty_cache()
             if fid_cls is not None:
                 scores['fid'] = fid_cls.fid_score(torch.cat(fid_samples, dim=0))
