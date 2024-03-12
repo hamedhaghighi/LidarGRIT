@@ -276,7 +276,8 @@ def main(runner_cfg_path=None):
         dis_batch_ind = np.random.randint(0, n_val_batch)
         data_dict['synth-2d'] = [] 
         data_dict['synth-3d'] = []
-        data_dict['synth-bev'] = []
+        if not opt.training.isTrain and cl_args.ref_dataset_name == 'kitti_360':
+            data_dict['synth-bev'] = []
         fpd_points = []
         fid_samples = [] if fid_cls is not None else None
         iou_list = []
