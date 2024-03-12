@@ -23,4 +23,5 @@ checkpoints_sp_new_cond_plus/
 checkpoints_sp_no_label_norm/
 wandb/
 stats/
+checkpoints_trans/
 
