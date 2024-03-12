@@ -2,7 +2,6 @@ import time
 # from data import create_dataset
 from models import create_model
 from util.visualizer import Visualizer
-from fid import FID
 from dataset.datahandler import get_data_loader
 from rangenet.tasks.semantic.modules.segmentator import *
 import yaml
@@ -13,16 +12,10 @@ import tqdm
 import os
 from util.lidar import LiDAR
 from util import *
-from collections import defaultdict
 import shutil
-from util.sampling.fps import downsample_point_clouds
-from util.metrics.cov_mmd_1nna import compute_cov_mmd_1nna
-from util.metrics.jsd import compute_jsd
-from util.metrics.swd import compute_swd
-from util.metrics.seg_accuracy import compute_seg_accuracy
 
 import random
-
+import hashlib
 
 os.environ['LD_PRELOAD'] = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6" 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -34,7 +27,7 @@ def cycle(iterable):
 
 
 class M_parser():
-    def __init__(self, cfg_path, data_dir, data_dir_B, load):
+    def __init__(self, cfg_path, data_dir, is_test):
         opt_dict = yaml.safe_load(open(cfg_path, 'r'))
         dict_class = make_class_from_dict(opt_dict)
         members = [attr for attr in dir(dict_class) if not callable(getattr(dict_class, attr)) and not attr.startswith("__")]
@@ -42,13 +35,34 @@ class M_parser():
             setattr(self, m, getattr(dict_class, m))
         if data_dir != '':
             self.dataset.dataset_A.data_dir = data_dir
-        if data_dir_B != '':
-            self.dataset.dataset_B.data_dir = data_dir_B
-        self.training.test = True
+        self.training.test = is_test
         self.model.isTrain = self.training.isTrain = not self.training.test
         self.training.epoch_decay = self.training.n_epochs//2
+        if 'transformer' in self.model.name:
+            vqckpt_dir = self.model.vq_ckpt_path.split(os.path.sep)[:-1]
+            vqconfig_path = os.path.join(os.path.sep.join(vqckpt_dir), 'vqgan.yaml')
+            vqcfg_dict = yaml.safe_load(open(vqconfig_path, 'r'))
+            self.model.modality_A = vqcfg_dict['model']['modality_A']
+            self.model.modality_B = vqcfg_dict['model']['modality_B']
+            self.model.out_ch = vqcfg_dict['model']['out_ch']
+            self.model.transformer_config.vocab_size = vqcfg_dict['model']['vqmodel']['n_embed']
+            H , W = vqcfg_dict['dataset']['dataset_A']['img_prop']['height'], vqcfg_dict['dataset']['dataset_A']['img_prop']['width']
+            symmetric = vqcfg_dict['model']['vqmodel']['ddconfig']['symmetric']
+            l  = len(vqcfg_dict['model']['vqmodel']['ddconfig']['ch_mult']) - 1
+            self.model.transformer_config.block_size = (H//2**l) * (W//2**l) if symmetric else (H//2**(l//2 + l%2)) * (W//2**l)
 
 
+def hash_string(input_string):
+    # Encode the input string as bytes
+    input_bytes = input_string.encode('utf-8')
+    
+    # Hash the bytes using SHA-256
+    hashed_bytes = hashlib.sha256(input_bytes)
+    
+    # Get the hexadecimal representation of the hash
+    hashed_string = hashed_bytes.hexdigest()
+    
+    return hashed_string
 
 def modify_opt_for_fast_test(opt):
     opt.n_epochs = 2
@@ -66,26 +80,13 @@ def check_exp_exists(opt, cfg_args):
     opt_m = opt.model
     opt_d = opt.dataset.dataset_A
     modality_A = '_'.join(opt_m.modality_A)
-    if hasattr(opt_m, 'modality_cond'):
-        cond_modality = '_'.join(opt_m.modality_cond)
     out_ch = '_'.join(opt_m.out_ch)
     if cfg_args.load != '':
-        # opt_t.name = cfg_path.split(os.sep)[1]
         opt_t.name = cfg_args.load
     elif cfg_args.fast_test:
-        opt_t.name = 'test'
+        opt_t.name = 'test_trans' if 'transformer' in opt.model.name else 'test'
     else:
-        if 'pix2pix' in opt_m.name:
-            opt_t.name = f'pix2pix_modality_A_{modality_A}_out_ch_{out_ch}_L_L1_{opt_m.lambda_L1}_L_nd_{opt_m.lambda_nd}' \
-                + f'_L_GAN_{opt_m.lambda_LGAN}_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
-        elif 'vqgan' in opt_m.name:
-            losscfg = opt_m.vqmodel.lossconfig.params
-            opt_t.name = f'vqgan_modality_A_{modality_A}_out_ch_{out_ch}_L_nd_{losscfg.lambda_nd}_L_disc_{losscfg.disc_weight}' \
-                + f'_L_mask_{opt_m.lambda_mask}_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}_bs_{opt_t.batch_size}'
-        elif 'transformer' in opt_m.name:
-            opt_t.name = f'transformer_modality_A_{modality_A}_out_ch_{out_ch}' \
-                + f'_w_{opt_d.img_prop.width}_h_{opt_d.img_prop.height}'
-        
+        opt_t.name = hash_string(yaml.dump(class_to_dict(opt)))
     exp_dir = os.path.join(opt_t.checkpoints_dir, opt_t.name)
     if not opt_t.continue_train and opt_t.isTrain:
         if os.path.exists(exp_dir):
@@ -107,38 +108,24 @@ def main(runner_cfg_path=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', type=str, default='', help='Path of the config file')
     parser.add_argument('--data_dir', type=str, default='', help='Path of the dataset A')
-    parser.add_argument('--data_dir_B', type=str, default='', help='Path of the dataset B')
     parser.add_argument('--seg_cfg_path', type=str, default='', help='Path of segmentator cfg')
     parser.add_argument('--fast_test', action='store_true', help='fast test of experiment')
     parser.add_argument('--norm_label', action='store_true', help='normalise labels')
-    parser.add_argument('--load', type=str, default='', help='the name of the experiment folder while loading the experiment')
     parser.add_argument('--ref_dataset_name', type=str, default='', help='reference dataset name for measuring unsupervised metrics')
     parser.add_argument('--on_input', action='store_true', help='unsupervised metrics is computerd on dataset A')
     parser.add_argument('--no_inv', action='store_true', help='use it to calc unsupervised metrics on input inv, in case modality_B does not contain inv')
-    parser.add_argument('--on_real', action='store_true', help='use it to calc unsupervised metrics on input inv, in case modality_B does not contain inv')
+    parser.add_argument('--completion', action='store_true', help='use it to complete the distorted point clouds')
     
     cl_args = parser.parse_args()
     if runner_cfg_path is not None:
         cl_args.cfg = runner_cfg_path
     if 'checkpoints' in cl_args.cfg:
         cl_args.load = cl_args.cfg.split(os.path.sep)[1]
-    split = 'train/val'
-    if cl_args.ref_dataset_name == 'semanticPOSS':
-        seqs = [0, 0, 5] if not cl_args.fast_test else [0, 0 , 0]
-        ids = [75, 385, 200] if not cl_args.fast_test else [1, 2, 3]
-    else:
-        seqs = [0, 0,1, 1, 2, 5] if not cl_args.fast_test else [0, 0 , 0]
-        ids = [1, 268,237, 158, 345, 586] if not cl_args.fast_test else [1, 2, 3]
-    if cl_args.on_real:
-        if cl_args.ref_dataset_name == 'semanticPOSS':
-            seqs = [4, 00, 00] 
-            ids = [141, 450, 475]
-        else:
-            seqs = [0, 2,  10, 5] 
-            ids = [3309, 229, 378, 2041]
-    opt = M_parser(cl_args.cfg, cl_args.data_dir, cl_args.data_dir_B, cl_args.load)
-    if cl_args.on_real:
-        opt.dataset.dataset_A.name = cl_args.ref_dataset_name
+    split = 'test'
+    
+    seqs = [0, 0 ,1, 1, 2, 5] if not cl_args.fast_test else [11, 11 , 11]
+    ids = [1, 268,237, 158, 345, 586] if not cl_args.fast_test else [1, 2, 3]
+    opt = M_parser(cl_args.cfg, cl_args.data_dir, True)
     opt.model.norm_label = cl_args.norm_label
     torch.manual_seed(opt.training.seed)
     np.random.seed(opt.training.seed)
@@ -169,77 +156,88 @@ def main(runner_cfg_path=None):
     g_steps = 0
     ignore_label = [0, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16]
 
-    is_ref_semposs = cl_args.ref_dataset_name == 'semanticPOSS'
-    val_dl, val_dataset = get_data_loader(opt, split, opt.training.batch_size, shuffle=False, is_ref_semposs=is_ref_semposs)
-    data_list = val_dataset.datalist
+    test_dl, test_dataset = get_data_loader(opt, split, opt.training.batch_size, shuffle=False, is_ref_semposs=False)
+    data_list = test_dataset.datalist
     dataset_A_datalist = np.array(data_list)
     dataset_A_selected_idx = []
     for seq, id in zip(seqs, ids):
-        pcl_file_path = os.path.join(ds_cfg.data_dir, 'sequences', str(seq).zfill(2), 'velodyne', str(id).zfill(6)+('.bin' if ds_cfg.is_raw else '.npy'))
+        if cl_args.ref_dataset_name == 'kitti_360': 
+            pcl_file_path = os.path.join(ds_cfg.data_dir, f'_{seq:04d}_sync/velodyne_points/data/', str(id).zfill(8)+('.bin' if ds_cfg.is_raw else '.npy'))
+        else:
+            pcl_file_path = os.path.join(ds_cfg.data_dir, 'sequences', str(seq).zfill(2), 'velodyne', str(id).zfill(6)+('.bin' if ds_cfg.is_raw else '.npy'))
         dataset_A_selected_idx.append(np.where(dataset_A_datalist == pcl_file_path)[0][0])
-    
     with torch.no_grad():
         seg_model = Segmentator(dataset_name=cl_args.ref_dataset_name if cl_args.seg_cfg_path == '' else 'synth', cfg_path=cl_args.seg_cfg_path).to(device)
+    
     model = create_model(opt, lidar_A, None)      # create a model given opt.model and other options
     model.set_seg_model(seg_model)               # regular setup: load and print networks; create schedulers
     ## initilisation of the model for netF in cut
-    val_dl_iter = iter(val_dl); data = next(val_dl_iter); model.data_dependent_initialize(data)
+    test_dl_iter = iter(test_dl); data = next(test_dl_iter); model.data_dependent_initialize(data)
     model.setup(opt.training)
-    # n_test_batch = 2 if cl_args.fast_test else  len(test_dl)
-    # test_dl_iter = iter(test_dl)
-    data_dict = defaultdict(list)
-    # N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), 1000)
-    start_from_epoch = model.schedulers[0].last_epoch if opt.training.continue_train else 0 
-    val_dl_iter = iter(val_dl)
-    n_val_batch = 2 if cl_args.fast_test else  len(val_dl)
+    test_dl_iter = iter(test_dl)
     ##### validation
-    val_losses = defaultdict(list)
     model.train(False)
-    tag = 'val' if opt.training.isTrain else 'test'
-    val_tq = tqdm.tqdm(total=len(dataset_A_selected_idx), desc='val_Iter', position=5)
+    tq = tqdm.tqdm(total=len(dataset_A_selected_idx), desc='val_Iter', position=5)
+
     for i, idx in enumerate(dataset_A_selected_idx):
-        data = val_dataset[idx]
-        for k ,v in data.items():
-            if k != 'path':
-                data[k] = v.unsqueeze(0)
-        model.set_input(data)
-        with torch.no_grad():
-            model.forward()
-        fetched_data = fetch_reals(data, lidar_A, device, opt.model.norm_label)
-        if cl_args.on_input:
-            # assert is_two_dataset == False
-            if 'depth' in fetched_data:
-                synth_depth = fetched_data['depth']
-            if 'reflectance' in fetched_data:
-                synth_reflectance = fetched_data['reflectance']
-            if 'mask' in fetched_data:
-                synth_mask = fetched_data['mask']
-        else:
-            if hasattr(model, 'synth_reflectance'):
-                synth_reflectance = model.synth_reflectance 
-            if hasattr(model, 'synth_mask'):
-                synth_mask = model.synth_mask
-            if hasattr(model, 'synth_depth') and not cl_args.no_inv:
-                synth_depth = model.synth_depth
+        
+        data = test_dataset[idx]
+        if cl_args.completion:
+            _, H, W = data['depth'].shape
+            mask = torch.zeros_like(data['depth']).repeat_interleave(4, dim=0)
+            mask[0, ...] = 1
+            mask[1, :, ::4] = 1  # 25% beams
+            mask[2, :] = torch.empty(H, 1).bernoulli_(0.5)  # random 50% beams
+            mask[3, :] = torch.empty(H, W).bernoulli_(0.1)  # random 10% points
+
+            data['depth'] = mask * data['depth']
+            data['mask'] = mask * data['mask']
+            data['points'] = mask[:, None].repeat_interleave(3, dim=1) * data['points']
+        for j in range(4 if cl_args.completion else 1):
+            data_n = {}
+            for k ,v in data.items():
+                if k != 'path':
+                    data_n[k] = (v[j:j+1, None] if len(v.shape) < 4 else v[j:j+1]) if cl_args.completion else v.unsqueeze(0) 
+                else:
+                    data_n[k] = v
+            model.set_input(data_n)
+            with torch.no_grad():
+                model.forward()
+            fetched_data = fetch_reals(data_n, lidar_A, device, opt.model.norm_label)
+            if cl_args.on_input:
+                # assert is_two_dataset == False
+                if 'depth' in fetched_data:
+                    synth_depth = fetched_data['depth']
+                if 'reflectance' in fetched_data:
+                    synth_reflectance = fetched_data['reflectance']
+                if 'mask' in fetched_data:
+                    synth_mask = fetched_data['mask']
             else:
-                synth_depth = fetched_data['depth'] * synth_mask
-        current_visuals = model.get_current_visuals()
-        if hasattr(model, 'synth_reflectance'):
-            synth_depth = lidar.revert_depth(tanh_to_sigmoid(synth_depth), norm=False)
-            synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
-            synth_reflectance = tanh_to_sigmoid(synth_reflectance)
-            synth_data = torch.cat([synth_depth, synth_points, synth_reflectance, synth_mask], dim=1)
-            pred, _ = seg_model(synth_data * fetched_data['mask'])
-            pred = pred.argmax(dim=1)
-            current_visuals['synth_label'] = pred
-        seq = seqs[i]
-        _id = ids[i]
-        # if is_two_dataset:
-        visualizer.display_current_results('',current_visuals, [seq, _id, cl_args.on_input, cl_args.on_real],ds_cfg, opt.dataset.dataset_A.name, lidar_A, ds_cfg_ref,\
-                cl_args.ref_dataset_name ,lidar, save_img=True)
-        # else:
-            # visualizer.display_current_results('', current_visuals, (seq, id),ds_cfg, opt.dataset.dataset_A.name, lidar, save_img=True)
-        val_tq.update(1)
+                if hasattr(model, 'synth_reflectance'):
+                    synth_reflectance = model.synth_reflectance 
+                if hasattr(model, 'synth_mask'):
+                    synth_mask = model.synth_mask
+                if hasattr(model, 'synth_depth') and not cl_args.no_inv:
+                    synth_depth = model.synth_depth
+                else:
+                    synth_depth = fetched_data['depth'] * synth_mask
+            current_visuals = model.get_current_visuals()
+            if hasattr(model, 'synth_reflectance'):
+                synth_depth = lidar.revert_depth(tanh_to_sigmoid(synth_depth), norm=False)
+                synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
+                synth_reflectance = tanh_to_sigmoid(synth_reflectance)
+                synth_data = torch.cat([synth_depth, synth_points, synth_reflectance, synth_mask], dim=1)
+                pred, _ = seg_model(synth_data * fetched_data['mask'])
+                pred = pred.argmax(dim=1)
+                current_visuals['synth_label'] = pred
+            seq = seqs[i]
+            _id = ids[i]
+            # if is_two_dataset:
+            visualizer.display_current_results('',current_visuals, [seq, _id, cl_args.on_input, False, 'completion_' + str(j) if cl_args.completion else ''], ds_cfg, opt.dataset.dataset_A.name, lidar_A, ds_cfg_ref,\
+                    cl_args.ref_dataset_name ,lidar, save_img=True)
+            # else:
+                # visualizer.display_current_results('', current_visuals, (seq, id),ds_cfg, opt.dataset.dataset_A.name, lidar, save_img=True)
+        tq.update(1)
 
 
 if __name__ == '__main__':

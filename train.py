@@ -144,7 +144,7 @@ def main(runner_cfg_path=None):
     if runner_cfg_path is not None:
         cl_args.cfg = runner_cfg_path
     if 'checkpoints' in cl_args.cfg:
-        cl_args.load = cl_args.cfg.split(os.path.sep)[1]
+        cl_args.load = cl_args.cfg.split(os.path.sep)[-2]
     opt = M_parser(cl_args.cfg, cl_args.data_dir, cl_args.data_dir_B, cl_args.load, cl_args.test)
     torch.manual_seed(opt.training.seed)
     np.random.seed(opt.training.seed)
@@ -177,7 +177,7 @@ def main(runner_cfg_path=None):
     lidar = lidar_ref
     visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
     g_steps = 0
-    min_rmse = 10000
+    min_best = 10000
     if cl_args.ref_dataset_name == 'kitti':
         ignore_label = [0, 2, 3, 4, 6, 5, 7, 8, 10, 12, 16]
     is_ref_semposs = cl_args.ref_dataset_name == 'semanticPOSS'
@@ -201,18 +201,26 @@ def main(runner_cfg_path=None):
     test_dl_iter = iter(test_dl)
     data_dict = defaultdict(list)
     N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), 5000)
-    test_tq = tqdm.tqdm(total=N//opt.training.batch_size, desc='real_data', position=5)
-    for i in range(0, N, opt.training.batch_size):
-        data = next(test_dl_iter)
-        data = fetch_reals(data, lidar_ref, device, opt.model.norm_label)
-        data_dict['real-2d'].append(data['depth'])
-        xyz_ds, xyz = depth_to_xyz(data['depth'], lidar_ref)
-        data_dict['real-3d'].append(xyz_ds)
-        if not opt.training.isTrain:
-            for pc in xyz.transpose(1, 2):
-                hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
-                data_dict['real-bev'].append(hist[None, ...])
-        test_tq.update(1)
+    H, W = opt.dataset.dataset_A.img_prop.height, opt.dataset.dataset_A.img_prop.width
+    data_dict_path = osp.join('stats', f'{cl_args.ref_dataset_name}_{H}*{W}_data_dict.pkl')
+    if not osp.exists(data_dict_path):
+        test_tq = tqdm.tqdm(total=N//opt.training.batch_size, desc='real_data', position=5)
+        for i in range(0, N, opt.training.batch_size):
+            data = next(test_dl_iter)
+            data = fetch_reals(data, lidar_ref, device, opt.model.norm_label)
+            data_dict['real-2d'].append(data['depth'])
+            xyz_ds, xyz = depth_to_xyz(data['depth'], lidar_ref)
+            data_dict['real-3d'].append(xyz_ds)
+            if not opt.training.isTrain or cl_args.ref_dataset_name == 'kitti_360':
+                for pc in xyz.transpose(1, 2):
+                    hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
+                    data_dict['real-bev'].append(hist[None, ...])
+            test_tq.update(1)
+        torch.save(data_dict, data_dict_path)
+    else:
+        data_dict = torch.load(data_dict_path)
+        print('data_dict loaded ...')
+    
     epoch_tq = tqdm.tqdm(total=opt.training.n_epochs, desc='Epoch', position=1)
     start_from_epoch = model.schedulers[0].last_epoch if opt.training.continue_train else 0 
         
@@ -268,6 +276,7 @@ def main(runner_cfg_path=None):
         dis_batch_ind = np.random.randint(0, n_val_batch)
         data_dict['synth-2d'] = [] 
         data_dict['synth-3d'] = []
+        data_dict['synth-bev'] = []
         fpd_points = []
         fid_samples = [] if fid_cls is not None else None
         iou_list = []
@@ -301,14 +310,15 @@ def main(runner_cfg_path=None):
                         synth_depth = model.synth_depth
                     else:
                         synth_depth = fetched_data['depth'] * synth_mask
-                data_dict['synth-2d'].append(synth_depth)
-                xyz_ds , xyz = depth_to_xyz(synth_depth, lidar)
-                data_dict['synth-3d'].append(xyz_ds)
-                if not opt.training.isTrain:
-                    for pc in xyz.transpose(1, 2):
-                        hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
-                        data_dict['synth-bev'].append(hist[None, ...])
-                fpd_points.append(xyz)
+                if len(data_dict['synth-2d']) * opt.training.batch_size < N:
+                    data_dict['synth-2d'].append(synth_depth)
+                    xyz_ds , xyz = depth_to_xyz(synth_depth, lidar)
+                    data_dict['synth-3d'].append(xyz_ds)
+                    if not opt.training.isTrain and cl_args.ref_dataset_name == 'kitti_360':
+                        for pc in xyz.transpose(1, 2):
+                            hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
+                            data_dict['synth-bev'].append(hist[None, ...])
+                    fpd_points.append(xyz)
                 if fid_cls is not None and len(fid_samples) < cl_args.n_fid:
                     synth_depth = tanh_to_sigmoid(synth_depth)
                     synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
@@ -360,7 +370,7 @@ def main(runner_cfg_path=None):
             scores.update(compute_swd(subsample(data_dict["synth-2d"], 2048), subsample(data_dict["real-2d"], 2048)))
             scores["jsd"] = compute_jsd(subsample(data_dict["synth-3d"], 2048) / 2.0, subsample(data_dict["real-3d"], 2048) / 2.0)
             scores.update(compute_cov_mmd_1nna(subsample(data_dict["synth-3d"], 2048), subsample(data_dict["real-3d"], 2048), 512, ("cd",)))
-            if not opt.training.isTrain:
+            if not opt.training.isTrain and cl_args.ref_dataset_name == 'kitti_360':
                  scores["jsd-bev"] = bev.compute_jsd_2d(data_dict["real-bev"], data_dict["synth-bev"])
                  scores["mmd-bev"] = bev.compute_mmd_2d(data_dict["real-bev"], data_dict["synth-bev"])
             torch.cuda.empty_cache()
@@ -370,8 +380,10 @@ def main(runner_cfg_path=None):
                 scores['fpd'] = fpd_cls.fpd_score(torch.cat(fpd_points, dim=0))
             visualizer.plot_current_losses('unsupervised_metrics', epoch, scores, g_steps)
             visualizer.print_current_losses('unsupervised_metrics', epoch, e_steps, scores, val_tq)
-        if losses["val_t" if is_transformer else "depth/rmse"] < min_rmse and opt.training.isTrain:
-            min_rmse = losses["val_t" if is_transformer else "depth/rmse"]
+        best_metric_key = "val_t" if is_transformer else 'jsd'
+        best_metric_holder = losses if is_transformer else scores
+        if best_metric_holder[best_metric_key] < min_best and opt.training.isTrain:
+            min_best = best_metric_holder[best_metric_key]
             model.save_networks('best')
         if opt.training.isTrain:
             model.update_learning_rate()    # update learning rates in the beginning of every epoch.

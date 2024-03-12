@@ -146,7 +146,9 @@ class Visualizer():
             if grid.max() <= 1.0:
                 grid = grid * 255.0
             im_grid = Image.fromarray(grid.transpose(1,2,0).astype(np.uint8))
-            folder_name = 'seq_' + str(step[0]).zfill(2) + '_id_' + str(step[1]).zfill(6) + ('_on_input' if step[2] else '') + ('_real' if step[3] else '') 
+            folder_name = 'seq_' + str(step[0]).zfill(2)\
+                  + '_id_' + str(step[1]).zfill(6) +\
+                      ('_on_input' if step[2] else '') + ('_real' if step[3] else '')  + (step[4]) 
             img_folder_dir = os.path.join(self.exp_dir,'TB_test', 'img_results', folder_name)
             os.makedirs(img_folder_dir, exist_ok=True)
             im_grid.save(os.path.join(img_folder_dir, tag.replace('/', '_') + '.png'))

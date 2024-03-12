@@ -55,7 +55,7 @@ def extract_patches(minibatch, patch_size, num_patches):
     B, C, nH, nW, pH, pW = patches.shape
     N = nH * nW
     patches = patches.reshape(B, C, N, pH, pW).transpose(1, 2)
-    inds = torch.randperm(N, device=device)[:num_patches]
+    inds = torch.randperm(N).to(device)[:num_patches]
     patches = patches.index_select(dim=1, index=inds)
     return patches
 
