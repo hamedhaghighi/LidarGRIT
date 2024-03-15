@@ -58,9 +58,7 @@ class TransformerModel(BaseModel):
         self.visual_names.extend(['z_indices', 'rec_z_indices'])
         
         # same_kernel_size = opt.dataset.dataset_A.img_prop.width == opt.dataset.dataset_A.img_prop.height
-        vqckpt_dir = opt_m.vq_ckpt_path.split(os.path.sep)[:-1]
-        vqconfig_path = os.path.join(os.path.sep.join(vqckpt_dir), 'vqgan.yaml')
-        vqcfg_dict=yaml.safe_load(open(vqconfig_path, 'r'))['model']['vqmodel']
+        vqcfg_dict = yaml.safe_load(open(opt_m.vqcfg_path, 'r'))['model']['vqmodel']
         vqcfg_dict['ckpt_path'] = opt_m.vq_ckpt_path
         model = VQModel(**vqcfg_dict, out_ch=opt_m.out_ch).to(self.gpu_ids[0] if len(self.gpu_ids) > 0 else 'cpu')
         model = model.eval()

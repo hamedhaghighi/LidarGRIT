@@ -70,7 +70,8 @@ class M_parser():
         self.training.epoch_decay = self.training.n_epochs//2
         if 'transformer' in self.model.name:
             vqckpt_dir = self.model.vq_ckpt_path.split(os.path.sep)[:-1]
-            vqconfig_path = os.path.join(os.path.sep.join(vqckpt_dir), 'vqgan.yaml')
+            vqconfig_path = os.path.join(os.path.sep.join(vqckpt_dir), 'vqgan_360.yaml' if self.dataset.dataset_A.name == 'kitti_360' else 'vqgan.yaml')
+            self.model.vqcfg_path = vqconfig_path
             vqcfg_dict = yaml.safe_load(open(vqconfig_path, 'r'))
             self.model.modality_A = vqcfg_dict['model']['modality_A']
             self.model.modality_B = vqcfg_dict['model']['modality_B']
@@ -181,10 +182,10 @@ def main(runner_cfg_path=None):
     if cl_args.ref_dataset_name == 'kitti':
         ignore_label = [0, 2, 3, 4, 6, 5, 7, 8, 10, 12, 16]
     is_ref_semposs = cl_args.ref_dataset_name == 'semanticPOSS'
-    train_dl, train_dataset = get_data_loader(opt, 'train', opt.training.batch_size,is_ref_semposs=is_ref_semposs)
-    val_dl, val_dataset = get_data_loader(opt, 'val', opt.training.batch_size, shuffle=False, is_ref_semposs=is_ref_semposs)  
+    train_dl, _ = get_data_loader(opt, 'train', opt.training.batch_size,is_ref_semposs=is_ref_semposs)
+    val_dl, val_dataset = get_data_loader(opt, 'test' if not opt.training.isTrain and is_transformer else 'val', opt.training.batch_size, shuffle=False, is_ref_semposs=is_ref_semposs)  
     # val and test are similar splits during training
-    test_dl, test_dataset = get_data_loader(opt, 'test', opt.training.batch_size, dataset_name=cl_args.ref_dataset_name, two_dataset_enabled=False, is_ref_semposs=is_ref_semposs)
+    test_dl, test_dataset = get_data_loader(opt, 'test' , opt.training.batch_size, dataset_name=cl_args.ref_dataset_name, two_dataset_enabled=False, is_ref_semposs=is_ref_semposs)
     with torch.no_grad():
         seg_model = Segmentator(dataset_name=cl_args.ref_dataset_name\
                                  if cl_args.seg_cfg_path == '' else 'synth', cfg_path=cl_args.seg_cfg_path).to(device)
@@ -218,7 +219,7 @@ def main(runner_cfg_path=None):
             test_tq.update(1)
         torch.save(data_dict, data_dict_path)
     else:
-        data_dict = torch.load(data_dict_path)
+        data_dict = torch.load(data_dict_path, map_location=device)
         print('data_dict loaded ...')
     
     epoch_tq = tqdm.tqdm(total=opt.training.n_epochs, desc='Epoch', position=1)
