@@ -181,11 +181,10 @@ def main(runner_cfg_path=None):
     min_best = 10000
     if cl_args.ref_dataset_name == 'kitti':
         ignore_label = [0, 2, 3, 4, 6, 5, 7, 8, 10, 12, 16]
-    is_ref_semposs = cl_args.ref_dataset_name == 'semanticPOSS'
-    train_dl, _ = get_data_loader(opt, 'train', opt.training.batch_size,is_ref_semposs=is_ref_semposs)
-    val_dl, val_dataset = get_data_loader(opt, 'test' if not opt.training.isTrain and is_transformer else 'val', opt.training.batch_size, shuffle=False, is_ref_semposs=is_ref_semposs)  
+    train_dl, _ = get_data_loader(opt, 'train', opt.training.batch_size, is_transformer=is_transformer)
+    val_dl, val_dataset = get_data_loader(opt, 'test' if not opt.training.isTrain and is_transformer else 'val', opt.training.batch_size, shuffle=False, is_transformer=is_transformer)  
     # val and test are similar splits during training
-    test_dl, test_dataset = get_data_loader(opt, 'test' , opt.training.batch_size, dataset_name=cl_args.ref_dataset_name, two_dataset_enabled=False, is_ref_semposs=is_ref_semposs)
+    test_dl, test_dataset = get_data_loader(opt, 'test' , opt.training.batch_size, dataset_name=cl_args.ref_dataset_name, two_dataset_enabled=False, is_transformer=is_transformer)
     with torch.no_grad():
         seg_model = Segmentator(dataset_name=cl_args.ref_dataset_name\
                                  if cl_args.seg_cfg_path == '' else 'synth', cfg_path=cl_args.seg_cfg_path).to(device)
@@ -267,7 +266,7 @@ def main(runner_cfg_path=None):
                     model.save_networks('latest')
                 train_tq.update(1)
         val_dl_iter = iter(val_dl)
-        n_val_batch = 2 if cl_args.fast_test else  len(val_dl)
+        n_val_batch = 2 if cl_args.fast_test else (N//opt.training.batch_size if not opt.training.isTrain and is_transformer else len(val_dl))
 
         ##### validation
         val_losses = defaultdict(list)
@@ -285,7 +284,7 @@ def main(runner_cfg_path=None):
         m_acc_list = []
         rec_list = []
         prec_list = []
-        label_map = ds_cfg_ref.kitti_to_POSS_map if is_ref_semposs and cl_args.map_label else None
+        label_map = None
 
         for i in range(n_val_batch):
             data = next(val_dl_iter)
@@ -319,7 +318,7 @@ def main(runner_cfg_path=None):
                     if not opt.training.isTrain and cl_args.ref_dataset_name == 'kitti_360':
                         for pc in xyz.transpose(1, 2):
                             hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
-                            data_dict['synth-bev'].append(hist[None, ...])
+                            data_dict['synth-bev'].append(hist[None, ...].to(device))
                     fpd_points.append(xyz)
                 if fid_cls is not None and len(fid_samples) < cl_args.n_fid:
                     synth_depth = tanh_to_sigmoid(synth_depth)

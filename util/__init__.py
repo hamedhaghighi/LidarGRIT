@@ -109,6 +109,19 @@ labels_mapping = {
     28: 15,
     30: 16
 }
+class SphericalOptimizer(torch.optim.Adam):
+    def __init__(self, params, **kwargs):
+        super().__init__(params, **kwargs)
+        self.params = params
+
+    @torch.no_grad()
+    def step(self, closure=None):
+        loss = super().step(closure)
+        for param in self.params:
+            param.data.div_(param.pow(2).mean(dim=1, keepdim=True).add(1e-9).sqrt())
+        return loss
+    
+
 
 
 def prepare_data_for_seg(data, lidar, is_batch=True):

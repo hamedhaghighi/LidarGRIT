@@ -34,7 +34,6 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         limited_view=False,
         finesize=None,
         norm_label=False,
-        is_ref_semposs=False,
         do_augment=False):
         super().__init__()
         self.root = root if name == 'kitti_360' else osp.join(root, "sequences")
@@ -60,7 +59,6 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         self.limited_view = limited_view
         self.finesize = finesize
         self.norm_label = norm_label
-        self.is_ref_semposs = is_ref_semposs
         # Compose the transforms
         self.transform_list = [
             transforms.ToTensor(),
@@ -275,7 +273,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
             # if self.name == 'carla' :
             #     out['label'] = _map(out['label'].astype('int'), self.DATA.kitti_to_POSS_map).astype(np.float32)
             out['lwo'] = points[..., [4]]
-            if self.name == 'carla' and self.is_ref_semposs:
+            if self.name == 'carla':
                 out['lwo'] = _map(out['lwo'].astype('int'), self.DATA.kitti_to_POSS_map).astype(np.float32)
         if self.has_rgb:
             out["rgb"] = points[..., -3:]/ 255.0 # h,w, c

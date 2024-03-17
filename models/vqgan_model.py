@@ -8,8 +8,9 @@ from models.modules.losses.vqperceptual import VQLPIPSWithDiscriminator
 from models.modules.discriminator.model import NLayerDiscriminator
 from models.modules.losses.lpips import LPIPS
 from models.vqgan import VQModel
-from util import class_to_dict, diff_augment
+from util import class_to_dict, diff_augment, SphericalOptimizer
 from models.util import init_net
+from tqdm import tqdm
 
 class VQGANModel(BaseModel):
     """ This class implements the pix2pix model, for learning a mapping from input images to output images given paired data.
@@ -91,6 +92,62 @@ class VQGANModel(BaseModel):
         for k , v in out_dict.items():
             setattr(self, 'synth_' + k , v)
         
+    def reconstruct(self):
+        num_step = 100
+        perturb_latent = True
+        noise_ratio = 0.75
+        noise_sigma = 1.0
+        lr_rampup_ratio = 0.05
+        lr_rampdown_ratio = 0.25
+        def lr_schedule(iteration):
+            t = iteration / num_step
+            gamma = min(1.0, (1.0 - t) / lr_rampdown_ratio)
+            gamma = 0.5 - 0.5 * np.cos(gamma * np.pi)
+            gamma = gamma * min(1.0, t / lr_rampup_ratio)
+            return gamma
+        
+        self.set_requires_grad(self.netVQ, False)
+        B, _, H, W = self.real_A.shape
+        symmetric = self.opt_m.vqmodel.ddconfig.symmetric
+        l  = len(self.opt_m.vqmodel.ddconfig.ch_mult) - 1
+        z_dim_h, z_dim_w = (H//2**l, W//2**l) if symmetric else (H//2**(l//2 + l%2), W//2**l)
+        z_dim_c = self.opt_m.vqmodel.embed_dim
+        
+        latent = torch.randn(B, z_dim_c, z_dim_h, z_dim_w, device=self.device)
+        latent.div_(latent.pow(2).mean(dim=[1,2,3], keepdim=True).add(1e-9).sqrt())
+        latent = torch.nn.Parameter(latent).requires_grad_()
+
+        optim = SphericalOptimizer(params=[latent], lr=0.1)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optim, lr_lambda=lr_schedule)
+
+        # optimize the latent
+        for current_step in tqdm(range(num_step), leave=False):
+            progress = current_step / num_step
+            # noise
+            w = max(0.0, 1.0 - progress / noise_ratio)
+            noise_strength = 0.05 * noise_sigma * w ** 2
+            noise = noise_strength * torch.randn_like(latent)
+            # forward G
+            quant, emb_loss, _ = self.netVQ.module.quantize(latent + noise if perturb_latent else latent)
+            out_dict , out = self.netVQ.module.decode(quant)
+            for k , v in out_dict.items():
+                setattr(self, 'synth_' + k , v)
+            loss, loss_G_dict = self.netVQ.module.training_step(self.real_A, out, 0, global_step=0,\
+                                                                            aug_cls=self.Aug, qloss=emb_loss, lidar=self.lidar, mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
+            if current_step % 10 == 0: 
+                print_msg = f'Step: {current_step}'
+                for k , v in loss_G_dict.items():
+                    print_msg +=  f' {k} : {int(v.item()* 10000)/10000}'
+                print(print_msg)
+                print_msg += '\n'
+            # per-sample gradients
+            optim.zero_grad()
+            loss.backward(gradient=torch.ones_like(loss))
+            optim.step()
+            scheduler.step()
+
+        return
+    
     @torch.no_grad()
     def validate(self):
         self.forward(train=False)

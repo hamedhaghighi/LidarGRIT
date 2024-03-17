@@ -122,9 +122,12 @@ def main(runner_cfg_path=None):
     if 'checkpoints' in cl_args.cfg:
         cl_args.load = cl_args.cfg.split(os.path.sep)[1]
     split = 'test'
-    
-    seqs = [0, 0 ,1, 1, 2, 5] if not cl_args.fast_test else [11, 11 , 11]
-    ids = [1, 268,237, 158, 345, 586] if not cl_args.fast_test else [1, 2, 3]
+    if cl_args.ref_dataset_name == 'kitti':
+        seqs = [0, 0 ,1, 1, 2, 5] if not cl_args.fast_test else [11, 11 , 11]
+        ids = [1, 268,237, 158, 345, 586] if not cl_args.fast_test else [1, 2, 3]
+    elif cl_args.ref_dataset_name == 'kitti_360':
+        seqs= [0]
+        ids = [854]
     opt = M_parser(cl_args.cfg, cl_args.data_dir, True)
     opt.model.norm_label = cl_args.norm_label
     torch.manual_seed(opt.training.seed)
@@ -162,7 +165,7 @@ def main(runner_cfg_path=None):
     dataset_A_selected_idx = []
     for seq, id in zip(seqs, ids):
         if cl_args.ref_dataset_name == 'kitti_360': 
-            pcl_file_path = os.path.join(ds_cfg.data_dir, f'_{seq:04d}_sync/velodyne_points/data/', str(id).zfill(8)+('.bin' if ds_cfg.is_raw else '.npy'))
+            pcl_file_path = os.path.join(ds_cfg.data_dir, f'2013_05_28_drive_{seq:04d}_sync/velodyne_points/data/', str(id).zfill(10)+('.bin' if ds_cfg.is_raw else '.npy'))
         else:
             pcl_file_path = os.path.join(ds_cfg.data_dir, 'sequences', str(seq).zfill(2), 'velodyne', str(id).zfill(6)+('.bin' if ds_cfg.is_raw else '.npy'))
         dataset_A_selected_idx.append(np.where(dataset_A_datalist == pcl_file_path)[0][0])
@@ -201,8 +204,11 @@ def main(runner_cfg_path=None):
                 else:
                     data_n[k] = v
             model.set_input(data_n)
-            with torch.no_grad():
-                model.forward()
+            if cl_args.completion:
+                model.reconstruct()
+            else:
+                 with torch.no_grad():
+                    model.forward()
             fetched_data = fetch_reals(data_n, lidar_A, device, opt.model.norm_label)
             if cl_args.on_input:
                 # assert is_two_dataset == False
@@ -233,7 +239,7 @@ def main(runner_cfg_path=None):
             seq = seqs[i]
             _id = ids[i]
             # if is_two_dataset:
-            visualizer.display_current_results('',current_visuals, [seq, _id, cl_args.on_input, False, 'completion_' + str(j) if cl_args.completion else ''], ds_cfg, opt.dataset.dataset_A.name, lidar_A, ds_cfg_ref,\
+            visualizer.display_current_results('',current_visuals, [seq, _id, cl_args.on_input, False, '_completion_' + str(j) if cl_args.completion else ''], ds_cfg, opt.dataset.dataset_A.name, lidar_A, ds_cfg_ref,\
                     cl_args.ref_dataset_name ,lidar, save_img=True)
             # else:
                 # visualizer.display_current_results('', current_visuals, (seq, id),ds_cfg, opt.dataset.dataset_A.name, lidar, save_img=True)

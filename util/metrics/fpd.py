@@ -14,7 +14,7 @@ class FPD():
     self.path = './'
     self.batch_size = batch_size
     ds = train_dataset
-    n_samples = min(max_sample, len(train_dataset))
+    n_samples = min(max_sample, len(train_dataset)) if train_dataset is not None else max_sample
     stat_root = os.path.join('stats', 'fpd_stats')
     os.makedirs(stat_root, exist_ok=True)
     stat_dir = os.path.join(stat_root, f'fpd_{dataset_name}.pkl')

@@ -55,7 +55,7 @@ class BinaryScan(Dataset):
     # do the mapping
     return lut[label]
 
-def get_dataset(dataset_name, cfg, ds_cfg, data_dir, split, limited_view=False, is_ref_semposs=False, norm_label=False):
+def get_dataset(dataset_name, cfg, ds_cfg, data_dir, split, limited_view=False, norm_label=False):
   if dataset_name in ['kitti', 'carla', 'synthlidar', 'kitti_360']:
     dataset = KITTIOdometry(
           data_dir,
@@ -69,7 +69,6 @@ def get_dataset(dataset_name, cfg, ds_cfg, data_dir, split, limited_view=False, 
           limited_view=limited_view,
           finesize=cfg.img_prop.finesize if (split == 'train' and cfg.img_prop.finesize != -1) else None,
           norm_label=norm_label,
-          is_ref_semposs=is_ref_semposs,
           do_augment= cfg.do_augment
       )
   elif dataset_name =='nuscene':
@@ -86,19 +85,24 @@ def get_dataset(dataset_name, cfg, ds_cfg, data_dir, split, limited_view=False, 
       )
   return dataset
 
-def get_data_loader(cfg, split, batch_size, dataset_name='', shuffle=True, two_dataset_enabled=True, is_ref_semposs=False):
+def get_data_loader(cfg, split, batch_size, dataset_name='', shuffle=True, two_dataset_enabled=True, is_transformer=False):
   cfg_A = cfg.dataset.dataset_A
   norm_label = cfg.model.norm_label
   dataset_name_A = cfg_A.name if dataset_name == '' else dataset_name
   ds_cfg_A = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{dataset_name_A}_cfg.yml', 'r')))
+  if dataset_name_A == 'kitti_360' and split == 'val':
+    if is_transformer:
+      ds_cfg_A.split.val = [0]
+    else:
+      ds_cfg_A.split.val = [5]
   data_dir = cfg_A.data_dir if dataset_name == '' else ds_cfg_A.data_dir
   limited_view = 'rgb' in cfg.model.modality_A or 'rgb' in cfg.model.modality_B
-  dataset_A = get_dataset(dataset_name_A, cfg_A, ds_cfg_A, data_dir, split, limited_view, is_ref_semposs, norm_label)
+  dataset_A = get_dataset(dataset_name_A, cfg_A, ds_cfg_A, data_dir, split, limited_view, norm_label)
   dataset = dataset_A
   if hasattr(cfg.dataset, 'dataset_B') and two_dataset_enabled:
     cfg_B = cfg.dataset.dataset_B
     ds_cfg_B = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{cfg_B.name}_cfg.yml', 'r')))
-    dataset_B = get_dataset(cfg.dataset.dataset_B.name, cfg_B, ds_cfg_B, cfg_B.data_dir, split, limited_view, is_ref_semposs, norm_label)
+    dataset_B = get_dataset(cfg.dataset.dataset_B.name, cfg_B, ds_cfg_B, cfg_B.data_dir, split, limited_view, norm_label)
     dataset = BinaryScan(dataset_A, dataset_B)
   loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, drop_last=True if split == 'train' else False)
   return loader, dataset
