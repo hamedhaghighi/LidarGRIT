@@ -13,9 +13,11 @@ import os
 from util.lidar import LiDAR
 from util import *
 import shutil
-
+from collections import defaultdict
 import random
 import hashlib
+from util.metrics.depth import compute_depth_accuracy, compute_depth_error
+from util.metrics.cov_mmd_1nna import compute_cd
 
 os.environ['LD_PRELOAD'] = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6" 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -25,6 +27,29 @@ def cycle(iterable):
         for x in iterable:
             yield x
 
+def calc_supervised_metrics(synth_depth, real_depth, real_mask, real_points, lidar):
+    # self.forward()
+    points_gen = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth))
+    points_gen = flatten(points_gen)
+    points_ref = flatten(real_points)
+    depth_ref = lidar.denormalize_depth(tanh_to_sigmoid(real_depth))
+    depth_gen = lidar.denormalize_depth(tanh_to_sigmoid(synth_depth))
+    cd = compute_cd(points_ref, points_gen).mean().item()
+    MAE = (torch.abs(depth_ref - depth_gen)* real_mask).mean().item()
+    scores = {'cd': cd, 'MAE': MAE}
+    accuracies = compute_depth_accuracy(depth_ref, depth_gen, real_mask)
+    depth_accuracies = {'depth/' + k: v.mean().item() for k ,v in accuracies.items()}
+    errors = compute_depth_error(depth_ref, depth_gen, real_mask)
+    depth_errors = {'depth/' + k: v.mean().item() for k ,v in errors.items()}
+    scores.update(depth_accuracies)
+    scores.update(depth_errors)
+    # if 'reflectance' in self.opt.model.modality_B:
+    #     reflectance_ref = tanh_to_sigmoid(self.real_reflectance) + 1e-8
+    #     reflectance_gen = tanh_to_sigmoid(self.rec_synth_reflectance if is_transformer else self.synth_reflectance) + 1e-8
+    #     errors = compute_depth_error(reflectance_ref, reflectance_gen)
+    #     self.reflectance_errors = {'reflectance/' + k: v.mean().item() for k ,v in errors.items()}
+    #     self.reflectance_ssim = self.crterionSSIM(self.real_reflectance, self.synth_reflectance, torch.ones_like(self.real_reflectance))
+    return scores
 
 class M_parser():
     def __init__(self, cfg_path, data_dir, is_test):
@@ -159,7 +184,7 @@ def main(runner_cfg_path=None):
     g_steps = 0
     ignore_label = [0, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16]
 
-    test_dl, test_dataset = get_data_loader(opt, split, opt.training.batch_size, shuffle=False, is_ref_semposs=False)
+    test_dl, test_dataset = get_data_loader(opt, split, opt.training.batch_size, shuffle=False)
     data_list = test_dataset.datalist
     dataset_A_datalist = np.array(data_list)
     dataset_A_selected_idx = []
@@ -181,7 +206,7 @@ def main(runner_cfg_path=None):
     ##### validation
     model.train(False)
     tq = tqdm.tqdm(total=len(dataset_A_selected_idx), desc='val_Iter', position=5)
-
+    t_scores = defaultdict(list)
     for i, idx in enumerate(dataset_A_selected_idx):
         
         data = test_dataset[idx]
@@ -206,8 +231,9 @@ def main(runner_cfg_path=None):
             model.set_input(data_n)
             if cl_args.completion:
                 model.reconstruct()
+
             else:
-                 with torch.no_grad():
+                with torch.no_grad():
                     model.forward()
             fetched_data = fetch_reals(data_n, lidar_A, device, opt.model.norm_label)
             if cl_args.on_input:
@@ -227,6 +253,10 @@ def main(runner_cfg_path=None):
                     synth_depth = model.synth_depth
                 else:
                     synth_depth = fetched_data['depth'] * synth_mask
+            if cl_args.completion and j == 1:
+                scores = calc_supervised_metrics(synth_depth, fetched_data['depth'], fetched_data['mask'], fetched_data['points'], lidar_A)
+                for k, v in scores.items():
+                    t_scores[k].append(v)
             current_visuals = model.get_current_visuals()
             if hasattr(model, 'synth_reflectance'):
                 synth_depth = lidar.revert_depth(tanh_to_sigmoid(synth_depth), norm=False)
@@ -244,6 +274,10 @@ def main(runner_cfg_path=None):
             # else:
                 # visualizer.display_current_results('', current_visuals, (seq, id),ds_cfg, opt.dataset.dataset_A.name, lidar, save_img=True)
         tq.update(1)
+    if cl_args.completion:
+        for k, v in t_scores.items():
+            t_scores[k] = int(np.mean(v) * 1e4) / 1e4
+        print(t_scores)
 
 
 if __name__ == '__main__':

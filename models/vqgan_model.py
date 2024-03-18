@@ -93,7 +93,7 @@ class VQGANModel(BaseModel):
             setattr(self, 'synth_' + k , v)
         
     def reconstruct(self):
-        num_step = 100
+        num_step = 1000
         perturb_latent = True
         noise_ratio = 0.75
         noise_sigma = 1.0
@@ -112,10 +112,12 @@ class VQGANModel(BaseModel):
         l  = len(self.opt_m.vqmodel.ddconfig.ch_mult) - 1
         z_dim_h, z_dim_w = (H//2**l, W//2**l) if symmetric else (H//2**(l//2 + l%2), W//2**l)
         z_dim_c = self.opt_m.vqmodel.embed_dim
-        
         latent = torch.randn(B, z_dim_c, z_dim_h, z_dim_w, device=self.device)
         latent.div_(latent.pow(2).mean(dim=[1,2,3], keepdim=True).add(1e-9).sqrt())
         latent = torch.nn.Parameter(latent).requires_grad_()
+        # h = self.netVQ.module.encoder(self.real_A)
+        # latent = self.netVQ.module.quant_conv(h)
+        # latent = torch.nn.Parameter(latent.detach()).requires_grad_()
 
         optim = SphericalOptimizer(params=[latent], lr=0.1)
         scheduler = torch.optim.lr_scheduler.LambdaLR(optim, lr_lambda=lr_schedule)
@@ -132,11 +134,12 @@ class VQGANModel(BaseModel):
             out_dict , out = self.netVQ.module.decode(quant)
             for k , v in out_dict.items():
                 setattr(self, 'synth_' + k , v)
-            loss, loss_G_dict = self.netVQ.module.training_step(self.real_A, out, 0, global_step=0,\
-                                                                            aug_cls=self.Aug, qloss=emb_loss, lidar=self.lidar, mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
-            if current_step % 10 == 0: 
+            rec_loss = (torch.abs(out - self.real_A) * self.real_mask).mean()
+            loss = rec_loss
+            loss_dict = {'total':loss, 'emb':emb_loss, 'rec':rec_loss}
+            if current_step % 100 == 0: 
                 print_msg = f'Step: {current_step}'
-                for k , v in loss_G_dict.items():
+                for k , v in loss_dict.items():
                     print_msg +=  f' {k} : {int(v.item()* 10000)/10000}'
                 print(print_msg)
                 print_msg += '\n'
