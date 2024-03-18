@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Experiment Checkpoints</title>
+</head>
+<body>
+    <h1>Experiment Checkpoints</h1>
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>YAML File</th>
+        </tr>
+        {% for experiment in experiments %}
+        <tr>
+            <td>{{ experiment.id }}</td>
+            <td><a href="/yaml/{{ experiment.yaml_link }}" target="_blank">{{ experiment.yaml_link }}</a></td>
+            <!-- <td><a href="/yaml/{{ experiment.yaml_link }}">{{ experiment.yaml_link }}</a></td> -->
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
