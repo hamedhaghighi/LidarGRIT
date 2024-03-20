@@ -134,7 +134,7 @@ class VQGANModel(BaseModel):
             out_dict , out = self.netVQ.module.decode(quant)
             for k , v in out_dict.items():
                 setattr(self, 'synth_' + k , v)
-            rec_loss = (torch.abs(out - self.real_A) * self.real_mask).mean()
+            rec_loss = (torch.abs(out - self.real_A) * self.real_mask).sum(dim=[1,2,3])/self.real_mask.sum(dim=[1,2,3])
             loss = rec_loss
             loss_dict = {'total':loss, 'emb':emb_loss, 'rec':rec_loss}
             if current_step % 100 == 0: 

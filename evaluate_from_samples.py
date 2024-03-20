@@ -34,12 +34,15 @@ EVAL_MAX_DEPTH = 63.0
 EVAL_MIN_DEPTH = 0.5
 DATASET_MAX_DEPTH = 80.0
 
-def depth_to_xyz(depth, lidar, tol=1e-8):
+def depth_to_xyz(depth, lidar, tol=1e-8, cpu=False):
     depth = tanh_to_sigmoid(depth).clamp_(0, 1)
     xyz = lidar.depth_to_xyz(depth, tol)
     xyz_out = xyz.flatten(2)
     xyz = xyz_out.transpose(1, 2)  # (B,N,3)
-    xyz = downsample_point_clouds(xyz, 512)
+    if cpu:
+        xyz = downsample_point_clouds(xyz.cuda(), 512).cpu()
+    else:
+        xyz = downsample_point_clouds(xyz, 512)
     return xyz, xyz_out
 
 class Features10k(torch.utils.data.Dataset):
@@ -72,23 +75,26 @@ def main(runner_cfg_path=None):
     parser.add_argument('--sample_dir', type=str, default='', help='Path of the sample dir')
     parser.add_argument('--data_dir', type=str, default='', help='Path of the sample dir')
     parser.add_argument('--ref_dataset_name', type=str, default='kitti_360', help='Path of the sample dir')
+    parser.add_argument('--fast_test', action='store_true', help='fast test of experiment')
+    parser.add_argument('--cpu', action='store_true', help='fast test of experiment')
     parser.add_argument('--gpu', type=int, default=0, help='GPU no')
 
     cl_args = parser.parse_args()
-    torch.cuda.set_device(f'cuda:{cl_args.gpu}')
+    if not cl_args.cpu:
+        torch.cuda.set_device(f'cuda:{cl_args.gpu}')
     torch.manual_seed(0)
     np.random.seed(0)
     random.seed(0)
   # create a visualizer that display/save images and plots
     ## initilisation of the model for netF in cut
-    device = torch.device(f'cuda:{cl_args.gpu}')
+    device = torch.device(f'cuda:{cl_args.gpu}') if not cl_args.cpu else torch.device('cpu')
     data_dict = defaultdict(list)
     data_dict = torch.load(cl_args.data_dir, map_location=device)
-    N = min(len(data_dict['real-2d']) * 8, 5000)
+    N = 1 * 8 if cl_args.fast_test else  min(len(data_dict['real-2d']) * 8, 5000)
     print('data_dict loaded ...')
-    ds_cfg = yaml.safe_load(open(f'configs/dataset_cfg/{cl_args.ref_dataset_name}_cfg.yml', 'r'))
-    min_depth , max_depth = ds_cfg['min_depth'], ds_cfg['max_depth']
-    fpd_cls = FPD(None, cl_args.ref_dataset_name, None)
+    ds_cfg = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{cl_args.ref_dataset_name}_cfg.yml', 'r')))
+    min_depth , max_depth = ds_cfg.min_depth, ds_cfg.max_depth
+    fpd_cls = FPD(None, cl_args.ref_dataset_name, None, device='cpu' if cl_args.cpu else 'cuda')
     #### Train & Validation Loop
     # Train loop
     data_dict['synth-2d'] = [] 
@@ -97,17 +103,22 @@ def main(runner_cfg_path=None):
         data_dict['synth-bev'] = []
     fpd_points = []
     # fid_samples = [] if fid_cls is not None else None
-
+    h = 64 
+    w = 1024 if cl_args.ref_dataset_name == 'kitti_360' else 256
+    lidar = LiDAR(
+    cfg=ds_cfg,
+    height=h,
+    width=w).to(device)
     dataset = Features10k(cl_args.sample_dir, N)
     gen_loader = DataLoader(dataset, batch_size=8, num_workers=4)
     gen_loader_iter = iter(gen_loader)
-    n_gen_batch = len(gen_loader)   
+    n_gen_batch = 1 if cl_args.fast_test else  len(gen_loader) 
     gen_tq = tqdm.tqdm(total=n_gen_batch, desc='Iterating gen data', position=0, leave=True)
     for i in range(n_gen_batch):
         img, mask = next(gen_loader_iter)
         img = img.to(device)
         mask = mask.to(device)
-        synth_depth = (img[:, [0]] - min_depth) / (max_depth - min_depth)
+        synth_depth = (img[:, [0]] - EVAL_MIN_DEPTH) / (EVAL_MAX_DEPTH - EVAL_MIN_DEPTH)
         synth_depth = synth_depth * 2 - 1
 
         # import matplotlib.pyplot as plt
@@ -118,15 +129,16 @@ def main(runner_cfg_path=None):
         # plt.show()
         # exit(1)
         data_dict['synth-2d'].append(synth_depth)
-        xyz = (img[:, 1:4] * mask).flatten(2).transpose(1, 2)
-        xyz_norm = xyz / max_depth
-        xyz_ds = downsample_point_clouds(xyz_norm, 512)
+        xyz_ds , xyz_norm = depth_to_xyz(synth_depth, lidar, cl_args.cpu)
+        # xyz = (img[:, 1:4] * mask).flatten(2).transpose(1, 2)
+        # xyz_norm = xyz / max_depth
+        # xyz_ds = downsample_point_clouds(xyz_norm, 512)
         data_dict['synth-3d'].append(xyz_ds)
         if cl_args.ref_dataset_name == 'kitti_360':
-            for pc in xyz:
-                hist = bev.point_cloud_to_histogram(pc)
+            for pc in xyz_norm.transpose(1, 2):
+                hist = bev.point_cloud_to_histogram(pc * max_depth)
                 data_dict['synth-bev'].append(hist[None, ...].to(device))
-        fpd_points.append(xyz_norm.transpose(1, 2))
+        fpd_points.append(xyz_norm)
         gen_tq.update(1)
     ##### calculating unsupervised metrics
     for k ,v in data_dict.items():

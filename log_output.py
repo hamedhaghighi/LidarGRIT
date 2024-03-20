@@ -35,7 +35,8 @@ def calc_supervised_metrics(synth_depth, real_depth, real_mask, real_points, lid
     depth_ref = lidar.denormalize_depth(tanh_to_sigmoid(real_depth))
     depth_gen = lidar.denormalize_depth(tanh_to_sigmoid(synth_depth))
     cd = compute_cd(points_ref, points_gen).mean().item()
-    MAE = (torch.abs(depth_ref - depth_gen)* real_mask).mean().item()
+    MAE = (torch.abs(depth_ref - depth_gen)* real_mask).sum(dim=(1, 2, 3))/ real_mask.sum(dim=(1, 2, 3))
+    MAE = MAE.item()
     scores = {'cd': cd, 'MAE': MAE}
     accuracies = compute_depth_accuracy(depth_ref, depth_gen, real_mask)
     depth_accuracies = {'depth/' + k: v.mean().item() for k ,v in accuracies.items()}

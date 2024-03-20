@@ -10,7 +10,7 @@ from util.metrics.pointnet import pretrained_pointnet
 from tqdm import trange, tqdm
 
 class FPD():
-  def __init__(self, train_dataset, dataset_name, lidar, max_sample=10000, batch_size=8):
+  def __init__(self, train_dataset, dataset_name, lidar, max_sample=10000, batch_size=8, device='cuda'):
     self.path = './'
     self.batch_size = batch_size
     ds = train_dataset
@@ -21,7 +21,7 @@ class FPD():
     # parameters
     self.lidar = lidar 
     # concatenate the encoder and the head
-    self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    self.device = torch.device(device)
     self.pointnet = pretrained_pointnet().to(self.device)
 
     if os.path.isfile(stat_dir):

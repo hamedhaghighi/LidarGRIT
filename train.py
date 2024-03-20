@@ -57,7 +57,7 @@ def subsample(batch, n):
         return batch[torch.linspace(0, len(batch), n + 1)[:-1].long()]
 
 class M_parser():
-    def __init__(self, cfg_path, data_dir, data_dir_B, load, is_test):
+    def __init__(self, cfg_path, data_dir, data_dir_B, load, is_test, batch_size=''):
         opt_dict = yaml.safe_load(open(cfg_path, 'r'))
         dict_class = make_class_from_dict(opt_dict)
         members = [attr for attr in dir(dict_class) if not callable(getattr(dict_class, attr)) and not attr.startswith("__")]
@@ -65,6 +65,8 @@ class M_parser():
             setattr(self, m, getattr(dict_class, m))
         if data_dir != '':
             self.dataset.dataset_A.data_dir = data_dir
+        if batch_size != '':
+            self.training.batch_size = batch_size
         self.training.test = is_test
         self.model.isTrain = self.training.isTrain = not self.training.test
         self.training.epoch_decay = self.training.n_epochs//2
@@ -146,7 +148,7 @@ def main(runner_cfg_path=None):
         cl_args.cfg = runner_cfg_path
     if 'checkpoints' in cl_args.cfg:
         cl_args.load = cl_args.cfg.split(os.path.sep)[-2]
-    opt = M_parser(cl_args.cfg, cl_args.data_dir, cl_args.data_dir_B, cl_args.load, cl_args.test)
+    opt = M_parser(cl_args.cfg, cl_args.data_dir, cl_args.data_dir_B, cl_args.load, cl_args.test, cl_args.batch_size)
     torch.manual_seed(opt.training.seed)
     np.random.seed(opt.training.seed)
     random.seed(opt.training.seed)
@@ -177,7 +179,6 @@ def main(runner_cfg_path=None):
     width=opt.dataset.dataset_A.img_prop.width).to(device)
     lidar = lidar_ref
     visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
-    g_steps = 0
     min_best = 10000
     if cl_args.ref_dataset_name == 'kitti':
         ignore_label = [0, 2, 3, 4, 6, 5, 7, 8, 10, 12, 16]
@@ -221,9 +222,9 @@ def main(runner_cfg_path=None):
         data_dict = torch.load(data_dict_path, map_location=device)
         print('data_dict loaded ...')
     
-    epoch_tq = tqdm.tqdm(total=opt.training.n_epochs, desc='Epoch', position=1)
     start_from_epoch = model.schedulers[0].last_epoch if opt.training.continue_train else 0 
-        
+    epoch_tq = tqdm.tqdm(total=opt.training.n_epochs - start_from_epoch, desc='Epoch', position=1)
+    g_steps = start_from_epoch * len(train_dl)
     #### Train & Validation Loop
     for epoch in range(start_from_epoch, opt.training.n_epochs):    # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
         epoch_start_time = time.time()  # timer for entire epoch
