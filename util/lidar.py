@@ -185,9 +185,12 @@ class Coordinate(nn.Module):
         return points
     
     def depth_to_xyz(self, depth, tol=1e-8): # depth [0, 1]
+        valid = torch.abs(depth - self.drop_const) > tol
         depth = depth * (self.max_depth - self.min_depth) + self.min_depth
         depth /= self.max_depth
-        points = self.pol_to_xyz(depth)
+        depth_ = torch.clone(depth)
+        depth_[~valid] = 0.0
+        points = self.pol_to_xyz(depth_)
         return points
 
     def points_to_depth(self, xyz, drop_value=1, tol=1e-8, tau=2):

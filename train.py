@@ -134,6 +134,7 @@ def main(runner_cfg_path=None):
     parser.add_argument('--seg_cfg_path', type=str, default='', help='Path of segmentator cfg')
     parser.add_argument('--seg_exp', action='store_true', help='do segmentation experiments')
     parser.add_argument('--load', type=str, default='', help='the name of the experiment folder while loading the experiment')
+    parser.add_argument('--batch_size', type=str, default='', help='batch_size used in test exp')
     parser.add_argument('--test', action='store_true', help='test the model')
     parser.add_argument('--fast_test', action='store_true', help='fast test of experiment')
     parser.add_argument('--ref_dataset_name', type=str, default='', help='reference dataset name for measuring unsupervised metrics')
