@@ -129,7 +129,7 @@ def main(runner_cfg_path=None):
     for i in range(n_gen_batch):
         img, _ = next(gen_loader_iter)
         img = img.to(device)
-        synth_depth = (img[:, [0]] - EVAL_MIN_DEPTH) / (EVAL_MAX_DEPTH - EVAL_MIN_DEPTH)
+        synth_depth = (img[:, [0]] - min_depth) / (max_depth - min_depth)
         synth_depth = synth_depth * 2 - 1
         data_dict['synth-2d'].append(synth_depth)
         xyz_ds , xyz_norm = depth_to_xyz(synth_depth, lidar, cpu=cl_args.cpu)
@@ -139,7 +139,10 @@ def main(runner_cfg_path=None):
         # plt.figure(1)
         # plt.imshow(data_dict['real-2d'][0][0,0].cpu().numpy(), cmap='jet')
         # plt.figure(2)
-        # bev_img, pts_img = visualize_tensor(to_np(data_dict['real-3d'][0].transpose(1, 2)[0]), to_np((synth_depth[0] + 1)/2), 'point', cl_args.ref_dataset_name)
+        # bev_img, pts_img = visualize_tensor(to_np(xyz_norm.transpose(1, 2)[0]), to_np((synth_depth[0] + 1)/2), 'point', cl_args.ref_dataset_name)
+        # plt.imshow(np.asarray(pts_img))
+        # plt.figure(3)
+        # bev_img, pts_img = visualize_tensor(to_np(((img[:, 1:4]).flatten(2).transpose(1, 2) / max_depth)[0]), to_np((synth_depth[0] + 1)/2), 'point', cl_args.ref_dataset_name)
         # plt.imshow(np.asarray(pts_img))
         # plt.show()
         # exit(1)

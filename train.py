@@ -216,7 +216,7 @@ def main(runner_cfg_path=None):
             if not opt.training.isTrain or cl_args.ref_dataset_name == 'kitti_360':
                 for pc in xyz.transpose(1, 2):
                     hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
-                    data_dict['real-bev'].append(hist[None, ...])
+                    data_dict['real-bev'].append(hist[None, ...].to(device))
             test_tq.update(1)
         torch.save(data_dict, data_dict_path)
     else:
