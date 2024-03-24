@@ -179,6 +179,7 @@ def main(runner_cfg_path=None):
     height=opt.dataset.dataset_A.img_prop.height,
     width=opt.dataset.dataset_A.img_prop.width).to(device)
     lidar = lidar_ref
+    exp_dir = os.path.join(opt.training.checkpoints_dir, opt.training.name)
     visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
     min_best = 10000
     if cl_args.ref_dataset_name == 'kitti':
@@ -366,6 +367,16 @@ def main(runner_cfg_path=None):
         ##### calculating unsupervised metrics
 
         if not is_transformer or not opt.training.isTrain:
+            os.makedirs(osp(exp_dir, 'samples'), exist_ok=True)
+            index = 0
+            for batch in data_dict['synth-2d']:
+                for d in batch:
+                    d = tanh_to_sigmoid(d).clamp_(0, 1)
+                    mask = (d > 1e-8).float()
+                    unorm_d = d * (lidar.max_depth - lidar.min_depth) + lidar.min_depth
+                    unorm_d = unorm_d * mask
+                    torch.save(unorm_d.cpu(), osp.join(exp_dir, 'samples', f'{index}.pth'))
+                    index += 1
             for k ,v in data_dict.items():
                 if isinstance(v, list):
                     data_dict[k] = torch.cat(v, dim=0)[: N]

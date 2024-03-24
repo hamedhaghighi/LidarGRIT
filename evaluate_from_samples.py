@@ -34,7 +34,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 EVAL_MAX_DEPTH = 63.0
 EVAL_MIN_DEPTH = 0.5
 DATASET_MAX_DEPTH = 80.0
-
+# EVAL_MAX_DEPTH = 80.0
+# EVAL_MIN_DEPTH = 1.45
 def depth_to_xyz(depth, lidar, tol=1e-8, cpu=False):
     depth = tanh_to_sigmoid(depth).clamp_(0, 1)
     xyz = lidar.depth_to_xyz(depth, tol)
@@ -102,9 +103,10 @@ def main(runner_cfg_path=None):
     device = torch.device(f'cuda:{cl_args.gpu}') if not cl_args.cpu else torch.device('cpu')
     data_dict = defaultdict(list)
     data_dict = torch.load(cl_args.data_dir, map_location=device)
-    N = 1 * 8 if cl_args.fast_test else  min(len(data_dict['real-2d']) * 8, 5000)
+    N = 512 if cl_args.fast_test else  min(len(data_dict['real-2d']) * 8, 5000)
     print('data_dict loaded ...')
     ds_cfg = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{cl_args.ref_dataset_name}_cfg.yml', 'r')))
+    ds_cfg.min_depth, ds_cfg.max_depth = EVAL_MIN_DEPTH, EVAL_MAX_DEPTH
     min_depth , max_depth = ds_cfg.min_depth, ds_cfg.max_depth
     fpd_cls = FPD(None, cl_args.ref_dataset_name, None, device='cpu' if cl_args.cpu else 'cuda')
     #### Train & Validation Loop
@@ -124,12 +126,13 @@ def main(runner_cfg_path=None):
     dataset = Features10k(cl_args.sample_dir, N, cl_args.lidargen)
     gen_loader = DataLoader(dataset, batch_size=8, num_workers=4, shuffle=True)
     gen_loader_iter = iter(gen_loader)
-    n_gen_batch = 1 if cl_args.fast_test else  len(gen_loader) 
+    n_gen_batch = N//8 if cl_args.fast_test else  len(gen_loader) 
     gen_tq = tqdm.tqdm(total=n_gen_batch, desc='Iterating gen data', position=0, leave=True)
     for i in range(n_gen_batch):
-        img, _ = next(gen_loader_iter)
+        img, mask = next(gen_loader_iter)
         img = img.to(device)
         synth_depth = (img[:, [0]] - min_depth) / (max_depth - min_depth)
+        synth_depth = synth_depth * mask
         synth_depth = synth_depth * 2 - 1
         data_dict['synth-2d'].append(synth_depth)
         xyz_ds , xyz_norm = depth_to_xyz(synth_depth, lidar, cpu=cl_args.cpu)

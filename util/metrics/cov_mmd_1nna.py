@@ -25,6 +25,7 @@ def _pairwise_distance(pcs_1, pcs_2, batch_size, metrics=("cd", "emd"), verbose=
     B_1 = pcs_1.size(0)
     B_2 = pcs_2.size(0)
     device = pcs_1.device
+    is_cuda = pcs_1.is_cuda
 
     distance = {}
     for key in metrics:
@@ -42,6 +43,10 @@ def _pairwise_distance(pcs_1, pcs_2, batch_size, metrics=("cd", "emd"), verbose=
             batch_1 = pcs_1[[i]].expand(batch_2.size(0), -1, -1)
 
             if "cd" in metrics:
+                if is_cuda:
+                    dist_cd = compute_cd(batch_1, batch_2)
+                else:
+                    dist_cd = compute_cd(batch_1.cuda(), batch_2.cuda()).cpu()
                 dist_cd = compute_cd(batch_1, batch_2)
                 distance["cd"][i, j : j + batch_size] = dist_cd
             if "emd" in metrics:
