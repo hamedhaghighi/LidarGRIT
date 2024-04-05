@@ -6,7 +6,6 @@ from torch.optim import lr_scheduler
 from util import disentangle_output
 import numpy as np
 import torch.nn.functional as F
-from .stylegan_networks import StyleGAN2Discriminator, StyleGAN2Generator, TileStyleGAN2Discriminator
 ###############################################################################
 # Helper Functions
 ###############################################################################

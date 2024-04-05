@@ -25,4 +25,7 @@ wandb/
 stats/
 checkpoints_trans/
 checkpoints_kitti_360/
+checkpoints_kitti/
+checkpoints_trans_kitti/
+checkpoints_trans_kitti_360/
 

@@ -9,7 +9,6 @@ from glob import glob
 from util.lidar import point_cloud_to_xyz_image
 from util import _map
 from dataset.kitti_odometry import KITTIOdometry
-from dataset.nuscene import NuScene
 import yaml
 from util import make_class_from_dict
 
@@ -69,20 +68,10 @@ def get_dataset(dataset_name, cfg, ds_cfg, data_dir, split, limited_view=False, 
           limited_view=limited_view,
           finesize=cfg.img_prop.finesize if (split == 'train' and cfg.img_prop.finesize != -1) else None,
           norm_label=norm_label,
-          do_augment= cfg.do_augment
+          do_gp= cfg.do_gp
       )
   elif dataset_name =='nuscene':
-    dataset = NuScene(
-          data_dir,
-          split,
-          ds_cfg,
-          shape=(cfg.img_prop.height, cfg.img_prop.width),
-          flip=False,
-          modality=cfg.modality,
-          is_sorted=False,
-          is_raw=ds_cfg.is_raw,
-          fill_in_label=cfg.fill_in_label
-      )
+    dataset = None
   return dataset
 
 def get_data_loader(cfg, split, batch_size, dataset_name='', shuffle=True, two_dataset_enabled=True, is_transformer=False):

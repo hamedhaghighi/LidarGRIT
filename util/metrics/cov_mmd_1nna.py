@@ -47,7 +47,6 @@ def _pairwise_distance(pcs_1, pcs_2, batch_size, metrics=("cd", "emd"), verbose=
                     dist_cd = compute_cd(batch_1, batch_2)
                 else:
                     dist_cd = compute_cd(batch_1.cuda(), batch_2.cuda()).cpu()
-                dist_cd = compute_cd(batch_1, batch_2)
                 distance["cd"][i, j : j + batch_size] = dist_cd
             if "emd" in metrics:
                 dist_emd = compute_emd(batch_1, batch_2)

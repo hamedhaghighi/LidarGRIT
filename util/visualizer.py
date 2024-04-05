@@ -27,8 +27,7 @@ else:
 
 def visualize_tensor(pts, depth, tag, ds_name):
 
-    # depth_range = np.exp2(lidar_range*6)-1
-    color = plt.cm.turbo(np.clip(depth, 0, 1).flatten())
+    color = plt.cm.jet(np.clip(depth, 0, 1).flatten())
     # color = depth
     # mask out invalid points
     xyz = pts
@@ -48,20 +47,10 @@ def visualize_tensor(pts, depth, tag, ds_name):
     else:
         mtl.point_size = 4
     mtl.shader = "defaultLit"
-    # render.scene.set_background([255, 255, 255, 1.0])
-    # render.scene.set_background([0, 0, 0, 1.0])
     render.scene.add_geometry("point cloud", pcd, mtl)
     render.scene.set_lighting(render.scene.LightingProfile.NO_SHADOWS, (1, 1, 1))
-    # render.scene.scene.enable_sun_light(True)
-    # render.scene.camera.look_at([0, 0, 0], [0, 0, 0], [0, 0, 1])
     bev_img = render.render_to_image()
-    # render.setup_camera(60.0, [0, 0, 0], [-0.2, 0, 0.1], [0, 0, 1])
-    # render.setup_camera(60.0, [0, 0, 0], [-0.8, -0.1, 0.3], [0, 0, 1])
-    if ds_name == 'kitti' or ds_name == 'carla':
-        # render.setup_camera(60.0, [0, 0, 0], [-0.3, 0, 0.5], [0, 0, 1])
-        render.setup_camera(60.0, [0, 0, 0], [-0.3, 0, 0.2], [0, 0, 1])
-    else:
-        render.setup_camera(60.0, [0, 0, 0], [0.08, -0.1, 0.5], [0, 0, 1])
+    render.setup_camera(60.0, [0, 0, 0], [-0.1, -0.2, 0.25], [0, 0, 1])
     pts_img = render.render_to_image()
     return bev_img, pts_img
 

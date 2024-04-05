@@ -24,6 +24,7 @@ from util.metrics.fpd import FPD
 from util.metrics import bev  
 import random
 import hashlib
+import math
 
 os.environ['LD_PRELOAD'] = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6" 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -42,12 +43,15 @@ def hash_string(input_string):
     return hashed_string
 
 
-def depth_to_xyz(depth, lidar, tol=1e-8):
+def depth_to_xyz(depth, lidar, tol=1e-8, num_points=512, cpu=False):
     depth = tanh_to_sigmoid(depth).clamp_(0, 1)
     xyz = lidar.depth_to_xyz(depth, tol)
     xyz_out = xyz.flatten(2)
     xyz = xyz_out.transpose(1, 2)  # (B,N,3)
-    xyz = downsample_point_clouds(xyz, 512)
+    if cpu:
+        xyz = downsample_point_clouds(xyz.cuda(), num_points).cpu()
+    else:
+        xyz = downsample_point_clouds(xyz, num_points)
     return xyz, xyz_out
 
 def subsample(batch, n):
@@ -66,7 +70,7 @@ class M_parser():
         if data_dir != '':
             self.dataset.dataset_A.data_dir = data_dir
         if batch_size != '':
-            self.training.batch_size = batch_size
+            self.training.batch_size = int(batch_size)
         self.training.test = is_test
         self.model.isTrain = self.training.isTrain = not self.training.test
         self.training.epoch_decay = self.training.n_epochs//2
@@ -124,7 +128,7 @@ def check_exp_exists(opt, cfg_args):
         os.makedirs(exp_dir, exist_ok=True)
         shutil.copy(cfg_path, exp_dir)
     else:
-        assert os.path.exists(exp_dir)
+        assert os.path.exists(exp_dir), exp_dir
 
 def main(runner_cfg_path=None):
     parser = argparse.ArgumentParser()
@@ -137,8 +141,11 @@ def main(runner_cfg_path=None):
     parser.add_argument('--batch_size', type=str, default='', help='batch_size used in test exp')
     parser.add_argument('--test', action='store_true', help='test the model')
     parser.add_argument('--fast_test', action='store_true', help='fast test of experiment')
+    parser.add_argument('--debug', action='store_true', help='debug through visualisation')
     parser.add_argument('--ref_dataset_name', type=str, default='', help='reference dataset name for measuring unsupervised metrics')
     parser.add_argument('--n_fid', type=int, default=1000, help='num of samples for calculation of fid')
+    parser.add_argument('--num_points', type=int, default=512, help='num points for furthest point sampling')
+    parser.add_argument('--num_samples', type=int, default=5000, help='num samples for testing')
     parser.add_argument('--no_inv', action='store_true', help='use it to calc unsupervised metrics on input inv, in case modality_B does not contain inv')
     parser.add_argument('--on_input', action='store_true', help='unsupervised metrics will be calculated on dataset A')
     parser.add_argument('--gpu', type=int, default=0, help='GPU no')
@@ -199,29 +206,32 @@ def main(runner_cfg_path=None):
     model.setup(opt.training)
     fid_cls = FID(seg_model, test_dataset, cl_args.ref_dataset_name, lidar_A) \
         if (cl_args.ref_dataset_name!= '' and 'reflectance' in opt.model.modality_B) else None
-    fpd_cls = FPD(test_dataset, cl_args.ref_dataset_name, lidar_A) if cl_args.ref_dataset_name!= '' else None
+    fpd_cls = FPD(test_dataset, cl_args.ref_dataset_name, lidar_A, max_sample=cl_args.num_samples) if cl_args.ref_dataset_name!= '' else None
     n_test_batch = 2 if cl_args.fast_test else  len(test_dl)
     test_dl_iter = iter(test_dl)
     data_dict = defaultdict(list)
-    N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), 5000)
+    N = 2 * opt.training.batch_size if cl_args.fast_test else min(len(test_dataset), len(val_dataset), cl_args.num_samples)
     H, W = opt.dataset.dataset_A.img_prop.height, opt.dataset.dataset_A.img_prop.width
-    data_dict_path = osp.join('stats', f'{cl_args.ref_dataset_name}_{H}*{W}_data_dict.pkl')
+    if cl_args.num_samples == 5000:
+        data_dict_path = osp.join('stats', f'{cl_args.ref_dataset_name}_n_{cl_args.num_points}_{H}*{W}_data_dict.pkl')
+    else:
+        data_dict_path = osp.join('stats', f'{cl_args.ref_dataset_name}_{cl_args.num_samples}_n_{cl_args.num_points}_{H}*{W}_data_dict.pkl')
     if not osp.exists(data_dict_path):
-        test_tq = tqdm.tqdm(total=N//opt.training.batch_size, desc='real_data', position=5)
-        for i in range(0, N, opt.training.batch_size):
+        test_tq = tqdm.tqdm(total=math.ceil(N / opt.training.batch_size), desc='real_data', position=5)
+        for i in range(math.ceil(N / opt.training.batch_size)):
             data = next(test_dl_iter)
             data = fetch_reals(data, lidar_ref, device, opt.model.norm_label)
-            data_dict['real-2d'].append(data['depth'])
-            xyz_ds, xyz = depth_to_xyz(data['depth'], lidar_ref)
-            data_dict['real-3d'].append(xyz_ds)
-            if not opt.training.isTrain or cl_args.ref_dataset_name == 'kitti_360':
+            data_dict['real-2d'].append(data['depth'].to(device if opt.training.isTrain else 'cpu'))
+            xyz_ds, xyz = depth_to_xyz(data['depth'], lidar_ref, num_points=cl_args.num_points)
+            data_dict['real-3d'].append(xyz_ds.to(device if opt.training.isTrain else 'cpu'))
+            if cl_args.ref_dataset_name == 'kitti_360':
                 for pc in xyz.transpose(1, 2):
                     hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
-                    data_dict['real-bev'].append(hist[None, ...].to(device))
+                    data_dict['real-bev'].append(hist[None, ...].to(device if opt.training.isTrain else 'cpu'))
             test_tq.update(1)
         torch.save(data_dict, data_dict_path)
     else:
-        data_dict = torch.load(data_dict_path, map_location=device)
+        data_dict = torch.load(data_dict_path, map_location=device if opt.training.isTrain else 'cpu')
         print('data_dict loaded ...')
     
     start_from_epoch = model.schedulers[0].last_epoch if opt.training.continue_train else 0 
@@ -240,14 +250,15 @@ def main(runner_cfg_path=None):
             train_tq = tqdm.tqdm(total=n_train_batch, desc='Iter', position=3)
             for i in range(n_train_batch):  # inner loop within one epoch
                 data = next(train_dl_iter)
-                # import matplotlib.pyplot as plt
-                # plt.figure(0)
-                # plt.imshow(np.clip(data['depth'][0,0].numpy()* 5, 0, 1))
-                # plt.figure(1)
-                # plt.imshow(np.clip(data['reflectance'][0,0].numpy(),0 ,1))
-                # plt.figure(2)
-                # plt.imshow(data['label'][0,0].numpy())
-                # plt.show()
+                if cl_args.debug:
+                    import matplotlib.pyplot as plt
+                    plt.figure(0)
+                    plt.imshow(np.clip(data['depth'][0,0].numpy()* 5, 0, 1))
+                    plt.figure(1)
+                    plt.imshow(np.clip(data['reflectance'][0,0].numpy(),0 ,1))
+                    plt.figure(2)
+                    plt.imshow(data['label'][0,0].numpy())
+                    plt.show()
                 iter_start_time = time.time()  # timer for computation per iteration
                 g_steps += 1
                 e_steps += 1
@@ -269,7 +280,7 @@ def main(runner_cfg_path=None):
                     model.save_networks('latest')
                 train_tq.update(1)
         val_dl_iter = iter(val_dl)
-        n_val_batch = 2 if cl_args.fast_test else (N//opt.training.batch_size if not opt.training.isTrain and is_transformer else len(val_dl))
+        n_val_batch = 2 if cl_args.fast_test else (math.ceil(N/opt.training.batch_size) if not opt.training.isTrain and is_transformer else len(val_dl))
 
         ##### validation
         val_losses = defaultdict(list)
@@ -315,14 +326,14 @@ def main(runner_cfg_path=None):
                     else:
                         synth_depth = fetched_data['depth'] * synth_mask
                 if len(data_dict['synth-2d']) * opt.training.batch_size < N:
-                    data_dict['synth-2d'].append(synth_depth)
-                    xyz_ds , xyz = depth_to_xyz(synth_depth, lidar)
-                    data_dict['synth-3d'].append(xyz_ds)
+                    data_dict['synth-2d'].append(synth_depth.to(device if opt.training.isTrain else 'cpu'))
+                    xyz_ds , xyz = depth_to_xyz(synth_depth, lidar, num_points=cl_args.num_points)
+                    data_dict['synth-3d'].append(xyz_ds.to(device if opt.training.isTrain else 'cpu'))
                     if not opt.training.isTrain and cl_args.ref_dataset_name == 'kitti_360':
                         for pc in xyz.transpose(1, 2):
                             hist = bev.point_cloud_to_histogram(pc * lidar.max_depth)
-                            data_dict['synth-bev'].append(hist[None, ...].to(device))
-                    fpd_points.append(xyz)
+                            data_dict['synth-bev'].append(hist[None, ...].to(device if opt.training.isTrain else 'cpu'))
+                    fpd_points.append(xyz.to(device if opt.training.isTrain else 'cpu'))
                 if fid_cls is not None and len(fid_samples) < cl_args.n_fid:
                     synth_depth = tanh_to_sigmoid(synth_depth)
                     synth_points = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth)) * lidar.max_depth
@@ -367,23 +378,25 @@ def main(runner_cfg_path=None):
         ##### calculating unsupervised metrics
 
         if not is_transformer or not opt.training.isTrain:
-            os.makedirs(osp(exp_dir, 'samples'), exist_ok=True)
-            index = 0
-            for batch in data_dict['synth-2d']:
-                for d in batch:
-                    d = tanh_to_sigmoid(d).clamp_(0, 1)
-                    mask = (d > 1e-8).float()
-                    unorm_d = d * (lidar.max_depth - lidar.min_depth) + lidar.min_depth
-                    unorm_d = unorm_d * mask
-                    torch.save(unorm_d.cpu(), osp.join(exp_dir, 'samples', f'{index}.pth'))
-                    index += 1
+            if is_transformer:
+                os.makedirs(osp.join(exp_dir, f'samples_{cl_args.num_samples}'), exist_ok=True)
+                index = 0
+                for batch in data_dict['synth-2d']:
+                    for d in batch:
+                        d = tanh_to_sigmoid(d).clamp_(0, 1)
+                        mask = (d > 1e-8).float()
+                        unorm_d = d * (lidar.max_depth - lidar.min_depth) + lidar.min_depth
+                        unorm_d = unorm_d * mask
+                        torch.save(unorm_d.cpu(), osp.join(exp_dir, f'samples_{cl_args.num_samples}', f'{index}.pth'))
+                        index += 1
             for k ,v in data_dict.items():
                 if isinstance(v, list):
                     data_dict[k] = torch.cat(v, dim=0)[: N]
             scores = {}
-            scores.update(compute_swd(subsample(data_dict["synth-2d"], 2048), subsample(data_dict["real-2d"], 2048)))
-            scores["jsd"] = compute_jsd(subsample(data_dict["synth-3d"], 2048) / 2.0, subsample(data_dict["real-3d"], 2048) / 2.0)
-            scores.update(compute_cov_mmd_1nna(subsample(data_dict["synth-3d"], 2048), subsample(data_dict["real-3d"], 2048), 512, ("cd",)))
+            n_subsample = 5000
+            scores.update(compute_swd(subsample(data_dict["synth-2d"], n_subsample), subsample(data_dict["real-2d"], n_subsample)))
+            scores["jsd"] = compute_jsd(subsample(data_dict["synth-3d"], n_subsample) / 2.0, subsample(data_dict["real-3d"], n_subsample) / 2.0)
+            scores.update(compute_cov_mmd_1nna(subsample(data_dict["synth-3d"], n_subsample), subsample(data_dict["real-3d"], n_subsample), 512, ("cd",)))
             if not opt.training.isTrain and cl_args.ref_dataset_name == 'kitti_360':
                  scores["jsd-bev"] = bev.compute_jsd_2d(data_dict["real-bev"], data_dict["synth-bev"])
                  scores["mmd-bev"] = bev.compute_mmd_2d(data_dict["real-bev"], data_dict["synth-bev"])

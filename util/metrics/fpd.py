@@ -10,14 +10,14 @@ from util.metrics.pointnet import pretrained_pointnet
 from tqdm import trange, tqdm
 
 class FPD():
-  def __init__(self, train_dataset, dataset_name, lidar, max_sample=10000, batch_size=8, device='cuda'):
+  def __init__(self, train_dataset, dataset_name, lidar, max_sample=5000, batch_size=8, device='cuda'):
     self.path = './'
     self.batch_size = batch_size
     ds = train_dataset
     n_samples = min(max_sample, len(train_dataset)) if train_dataset is not None else max_sample
     stat_root = os.path.join('stats', 'fpd_stats')
     os.makedirs(stat_root, exist_ok=True)
-    stat_dir = os.path.join(stat_root, f'fpd_{dataset_name}.pkl')
+    stat_dir = os.path.join(stat_root, f'fpd_{dataset_name}.pkl') if n_samples == 5000 else os.path.join(stat_root, f'fpd_{dataset_name}_{10000}.pkl')
     # parameters
     self.lidar = lidar 
     # concatenate the encoder and the head
@@ -35,7 +35,15 @@ class FPD():
             data = ds[ind]
             if 'B' in data:
               data = data['B']
-            samples.append(data['points'].to(self.device))
+            depth = data['depth'].to(self.device)
+            if dataset_name == 'kitti_360':
+              mask_1 = data['mask'].to(self.device)
+              unorm_depth = depth * (self.lidar.max_depth - self.lidar.min_depth) + self.lidar.min_depth
+              mask_2 = torch.logical_and(unorm_depth > 0.5, unorm_depth < 63.0).float() # based on lidargen evaluation
+              depth *= mask_1 * mask_2
+            xyz = self.lidar.depth_to_xyz(depth[None, ...], 1e-8)[0]
+            xyz = xyz.flatten(2)
+            samples.append(xyz)
         samples = torch.stack(samples, dim=0).flatten(2)
         self.mu_train , self.sigma_train = self.compute_stats(samples)
         pickle.dump({'mu': self.mu_train, 'sigma':self.sigma_train}, open(stat_dir, 'wb'))
@@ -52,7 +60,10 @@ class FPD():
     features_list = []
     for i in trange(int(n_batch), desc='extracting features for fpd'):
       data = data_tensor[i * self.batch_size: (i + 1) * self.batch_size]
-      feature = self.pointnet(data)
+      if data.is_cuda:
+        feature = self.pointnet(data)
+      else:
+        feature = self.pointnet(data.cuda())
       features_list.append(feature.detach().cpu().numpy())
     
     return np.concatenate(features_list, axis=0)

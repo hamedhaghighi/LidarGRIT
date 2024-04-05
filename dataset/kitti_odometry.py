@@ -34,7 +34,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
         limited_view=False,
         finesize=None,
         norm_label=False,
-        do_augment=False):
+        do_gp=False):
         super().__init__()
         self.root = root if name == 'kitti_360' else osp.join(root, "sequences")
         if '/' in split:
@@ -65,7 +65,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
             transforms.Resize(self.shape, TF.InterpolationMode.NEAREST) 
             ]
         self.transform_aug_list = [transforms.RandomRotation(degrees=45, fill=1.0), transforms.RandomVerticalFlip(p=0.5), transforms.RandomHorizontalFlip(p=0.5),\
-                                             transforms.RandomAffine(degrees=30, translate=(0.1, 0.1), scale=(0.9, 1.1), fill=1.0)] if do_augment and split == 'train' else None
+                                             transforms.RandomAffine(degrees=30, translate=(0.1, 0.1), scale=(0.9, 1.1), fill=1.0)] if do_gp and split == 'train' else None
         if self.has_rgb:
             self.has_rgb = True
             calib = self.load_calib()
