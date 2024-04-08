@@ -1,91 +1,79 @@
-# Contrastive Learning-Based Framework for Sim-to-Real Mapping of Lidar Point Clouds in Autonomous Driving Systems
-This repository mainly contains the Semantic-CARLA dataset and the implementation of the CLS2R framework explained in our [paper](https://arxiv.org/abs/2312.15817).
+# Taming Transformers for Realistic Lidar Point Cloud Generation
+This repository mainly contains the implementation of the LidarGRIT and extended visualisation of generated samples.
 
-<p align="center"><img src="readme_materials/entire_framework.png" alt="drawing" width="80%"/></p>
-<p align="center"><img src="readme_materials/training_diag.png" alt="drawing" width="80%"/></p>
+<!-- <p align="center"><img src="readme_materials/entire_framework.png" alt="drawing" width="80%"/></p>
+<p align="center"><img src="readme_materials/training_diag.png" alt="drawing" width="80%"/></p> -->
 
-## Table of Contents
-- [Installation](#installation)
-- [Training](#training)
-- [Testing & Visualisation](#testing--visualisation)
-- [Rangenet++ Experiments](#rangenet-experiments)
-- [Acknowledgements](#acknowledgements)
 
 ## Installation
 ### Dependencies
-- Create a conda environment and activate it.
+- Install Anaconda and create a conda environment and activate it.
     ```
-    conda create --name cls2r python=3.6
+    conda env create -f environment.yml
     ```
 
 
     ```
-    conda activate cls2r
+    conda activate LidarGRIT
     ```
-- Install PyTorch following [official instructions](https://pytorch.org/get-started/locally/)
-
-The code has been tested on Ubuntu 18.04 with CUDA 12.1 and Pytorch 1.8.1.
-
-- Install other Python packages listed in requirements.txt
-    ```
-    pip install -r requirements.txt
-    ```
-### Dataset
-- Download our [Semantic-CARLA Dataset](https://livewarwickac-my.sharepoint.com/:u:/g/personal/u2039803_live_warwick_ac_uk/EeeNrNQ7nZRFpVd5wgIIkQQB8CSWSZE3j7uFvi3L2bpBcg?e=GW93yL) and unzip it.
 
 ## Training
  
-- Set the dataset parameters for the real dataset of your choice, e.g. kitti, in the `configs/dataset_cfg/[DATASET_NAME]_cfg.yaml` file. You also need to set the parameters of the simulated Semantic-CARLA dataset in  `configs/dataset_cfg/carla_cfg.yaml`. 
+- Set the dataset parameters for the real dataset, e.g. kitti-360, in the `configs/dataset_cfg/kitti_360_cfg.yaml` file. 
 
-- Set the training parameters for the image-to-image translation model of your choice, e.g. cut, in the `configs/train_cfg/[MODEL_NAME].yaml` file.
+- Set the training parameters for the VQ-VAE model in `configs/train_cfg/vqgan_360.yaml` and for the transformer model in `configs/train_cfg/transformer_360.yaml` files (for kitti-360).
 
-- Run the training code using:
-
-```
-python train.py --cfg configs/train_cfg/[MODEL_NAME].yaml 
-```
-The log of the training, including tensorboard plots and the model weights are saved in **checkpoints/[EXP_NAME]**.
-
-## Testing & Visualisation 
-
-- To test the model for calculating evaluation metrics including 'pixelAcc' on the test set, run:
+- To train VQ-VAE run:
 
 ```
-python train.py --cfg checkpoints/[EXP_NAME]/[MODEL_NAME].yaml --test
+python train.py --cfg configs/train_cfg/vqgan_360.yaml  --ref_dataset_name kitti_360
 ```
 
-- To visualise the outputs of the trained model in the image-based and point cloud representations, run:
+- To train the auto-regressive transformer run:
 
 ```
-python log_output.py --cfg checkpoints/[EXP_NAME]/[MODEL_NAME].yaml --ref_dataset_name [DATASET_NAME]
+python train.py --cfg configs/train_cfg/transformer_360.yaml --ref_dataset_name kitti_360
 ```
+The log of the training, including tensorboard plots and the model weights are saved in **checkpoints_kitti_360/[EXP_NAME]** for VQ-VAE and **checkpoints_trans_kitti_360/[EXP_NAME]** for the transformer.
 
+## Testing 
 
-## Rangenet++ Experiments
-
-- To reproduce the experiments regarding the training of the rangenet++ model, first, create the dataset synthesised by the model:
+- To get the results for LidarGRIT KITTI-360 generation, first you need to run the training to get the statistics of real data. You can do that by running the training in the fast mode:
 
 ```
-python infer_dataset.py --cfg checkpoints/[EXP_NAME]/[MODEL_NAME].yaml --data_folder [DATASET_DIR]
+python train.py --cfg configs/train_cfg/vqgan_360.yaml  --ref_dataset_name kitti_360 --fast_test
 ```
-- Change your current directory to `rangenet/tasks/semantic/`.
+The  statistics of real data (on test split) are created in **./stats** and  **./stats/fpd_stats** as pickle files.
 
-- Then, set the rangnet++ backbone parameters in `config/arch/[BACKBONE].yaml`.
+ Then, download the model checkpoints from [here](https://drive.google.com/file/d/1zW5lmsy7dNx1tW252TN1KMcXDAi1FRpx/view?usp=sharing) and extract the zip file to the projet root. You will see two directories for VQ-VAE checkpoint **checkpoints_kitti_360/[EXP_NAME]** and transformer checkpoint  **checkpoints_trans_kitti_360/[EXP_NAME]**. Download our generated samples from [here](https://drive.google.com/file/d/134pPfDr56yVENqGApGO-mq_218XZ8Xsq/view?usp=sharing) or you can also generate samples using transformer model running:
 
-- set the training dataset's label parameters in `config/[DATASET_NAME].yaml`.
-
-- Finally, run:
 ```
-python train.py --dataset [DATASET_DIR] -a config/arch/[BACKBONE].yaml -dc config/labels/[DATASET_NAME].yaml
+python train.py --cfg checkpoints_trans_kitti_360/[EXP_NAME]/transformer_360.yaml --ref_dataset_name kitti_360 --test
 ```
+The samples will be saved as torch tesnors containing range images (with ".pth" extension) in **checkpoints_trans_kitti_360/[EXP_NAME]/samples_5000/**.
+
+- To evaluate the generation from the samples generated (on all metrics except FPD) or other SOTA samples (e.g. LidarGen) use:
+
+```
+python evaluate_from_samples.py --sample_dir checkpoints_trans_kitti_360/[EXP_NAME]/samples_5000/  --data_dir stats/kitti_360_n_512_64\*1024_data_dict.pkl --ref_dataset_name kitti_360
+```
+- To calucluate the FPD use:
+
+```
+python evaluate_from_samples.py --sample_dir checkpoints_trans_kitti_360/[EXP_NAME]/samples_5000/  --data_dir stats/kitti_360_n_512_64\*1024_data_dict.pkl --ref_dataset_name kitti_360 --fpd
+```
+## Visualisation of generated Samples 
+### KITTI-360
+
+![KITTI-360](./more-visulisations/KITTI-360-visualisation.jpg)
+
+### KITTI odometry
+
+![KITTI-360](./more-visulisations/KITTI-odemetry-visualisation.jpg)
 
 ## Acknowledgements
 
-- CUT, Unet, and CycleGAN Implementation from [taesungp](https://github.com/taesungp/contrastive-unpaired-translation)
+- VQ-VAE and transformer Implementation from [CompVis](https://github.com/CompVis/taming-transformers)
 
-- GcGAN implementation from [hufu6371](https://github.com/hufu6371/GcGAN)
-
-- Raydrop Synthesis implementation from [kazuto1011](https://github.com/kazuto1011/dusty-gan)
-
-- Rangenet++ implementation from [PRBonn](https://github.com/PRBonn/lidar-bonnetal)
+- Raydrop estimation inspired by [kazuto1011](https://github.com/kazuto1011/dusty-gan)
  
