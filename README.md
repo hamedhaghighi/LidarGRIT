@@ -52,7 +52,7 @@ python train.py --cfg configs/train_cfg/vqgan_360.yaml  --ref_dataset_name kitti
 ```
 The  statistics of real data (on test split) are created in **./stats** and  **./stats/fpd_stats** as pickle files.
 
- Then, download the model checkpoints from [here](https://drive.google.com/file/d/1zW5lmsy7dNx1tW252TN1KMcXDAi1FRpx/view?usp=sharing) and extract the zip file to the projet root. You will see two directories for VQ-VAE checkpoint **checkpoints_kitti_360/[EXP_NAME]** and transformer checkpoint  **checkpoints_trans_kitti_360/[EXP_NAME]**. Download our generated samples from [here](https://drive.google.com/file/d/134pPfDr56yVENqGApGO-mq_218XZ8Xsq/view?usp=sharing) or you can also generate samples using transformer model running:
+ Then, download the model checkpoints from [here](https://drive.google.com/file/d/1zW5lmsy7dNx1tW252TN1KMcXDAi1FRpx/view?usp=sharing) and extract the zip file to the projet root. You will see two directories for VQ-VAE checkpoint **checkpoints_kitti_360/[EXP_NAME]** and transformer checkpoint  **checkpoints_trans_kitti_360/[EXP_NAME]**. Download our generated samples from [here](https://drive.google.com/file/d/101l5DnpqRwHXZTE9irFTMikki1Pa8E9e/view?usp=sharing) or you can also generate samples using transformer model running:
 
 ```
 python train.py --cfg checkpoints_trans_kitti_360/[EXP_NAME]/transformer_360.yaml --ref_dataset_name kitti_360 --test
