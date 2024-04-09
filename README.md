@@ -1,11 +1,18 @@
 # Taming Transformers for Realistic Lidar Point Cloud Generation
-This repository mainly contains the implementation of the LidarGRIT and extended visualisation of generated samples.
+This repository mainly contains the implementation of the [LidarGRIT](https://arxiv.org/pdf/2404.05505.pdf) and extended visualisation of generated samples.
 
 <!-- <p align="center"><img src="readme_materials/entire_framework.png" alt="drawing" width="80%"/></p>
 <p align="center"><img src="readme_materials/training_diag.png" alt="drawing" width="80%"/></p> -->
 
+## :bookmark_tabs: Table of Contents
+- [Installation](#installation)
+- [Training](#training)
+- [Testing](#testing)
+- [Visualisation of Generated Samples](#visualisation-of-generated-samples)
+- [Acknowledgements](#acknowledgements)
 
-## Installation
+
+## :gear: Installation
 ### Dependencies
 - Install Anaconda and create a conda environment and activate it.
     ```
@@ -17,7 +24,7 @@ This repository mainly contains the implementation of the LidarGRIT and extended
     conda activate LidarGRIT
     ```
 
-## Training
+## :train2: Training
  
 - Set the dataset parameters for the real dataset, e.g. kitti-360, in the `configs/dataset_cfg/kitti_360_cfg.yaml` file. 
 
@@ -36,7 +43,7 @@ python train.py --cfg configs/train_cfg/transformer_360.yaml --ref_dataset_name 
 ```
 The log of the training, including tensorboard plots and the model weights are saved in **checkpoints_kitti_360/[EXP_NAME]** for VQ-VAE and **checkpoints_trans_kitti_360/[EXP_NAME]** for the transformer.
 
-## Testing 
+## :test_tube: Testing 
 
 - To get the results for LidarGRIT KITTI-360 generation, first you need to run the training to get the statistics of real data. You can do that by running the training in the fast mode:
 
@@ -62,7 +69,7 @@ python evaluate_from_samples.py --sample_dir checkpoints_trans_kitti_360/[EXP_NA
 ```
 python evaluate_from_samples.py --sample_dir checkpoints_trans_kitti_360/[EXP_NAME]/samples_5000/  --data_dir stats/kitti_360_n_512_64\*1024_data_dict.pkl --ref_dataset_name kitti_360 --fpd
 ```
-## Visualisation of generated Samples 
+## :bar_chart: Visualisation of Generated Samples 
 ### KITTI-360
 
 ![KITTI-360](./more-visulisations/KITTI-360-visualisation.jpg)
