@@ -5,11 +5,11 @@ This repository mainly contains the implementation of the [LidarGRIT](https://ar
 <p align="center"><img src="readme_materials/training_diag.png" alt="drawing" width="80%"/></p> -->
 
 ## :bookmark_tabs: Table of Contents
-- [Installation](#installation)
-- [Training](#training)
-- [Testing](#testing)
-- [Visualisation of Generated Samples](#visualisation-of-generated-samples)
-- [Acknowledgements](#acknowledgements)
+- [Installation](#gear-installation)
+- [Training](#train2-training)
+- [Testing](#test_tube-testing)
+- [Visualisation of Generated Samples](#bar_chart-visualisation-of-generated-samples)
+- [Acknowledgements](#books-acknowledgements)
 
 
 ## :gear: Installation
@@ -78,7 +78,7 @@ python evaluate_from_samples.py --sample_dir checkpoints_trans_kitti_360/[EXP_NA
 
 ![KITTI-360](./more-visulisations/KITTI-odemetry-visualisation.jpg)
 
-## Acknowledgements
+## :books: Acknowledgements
 
 - VQ-VAE and transformer Implementation from [CompVis](https://github.com/CompVis/taming-transformers)
 
