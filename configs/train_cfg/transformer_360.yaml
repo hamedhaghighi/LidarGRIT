@@ -1,0 +1,51 @@
+# This file is covered by the LICENSE file in the root of this project.
+
+#Training & Experiment params
+training:
+  n_epochs: 100
+  lr: 4.5e-6
+  batch_size: 2
+  test: False
+  gpu_ids: [0]
+  checkpoints_dir: './checkpoints'
+  epoch: 'latest'
+  continue_train: False
+  display_freq: 50
+  print_freq: 50
+  save_latest_freq: 1000
+  verbose: False
+  suffix : ''
+  seed: 6
+  lr_policy: 'linear'
+  lr_decay_iters: 50
+  beta1: 0.5
+
+# model params
+model:
+  name: 'transformer'
+  norm_label: False
+  raster_type: 'p2p'
+  transformer_config:
+    n_layer: 10
+    n_head: 16
+    n_embd: 1024
+  vq_ckpt_path: ./checkpoints_kitti_360/test/latest.pth
+  cond_stage_config:
+    target: models.modules.misc.coord.CoordStage
+    params:
+      n_embed: 1024
+      down_factor: 16
+
+
+
+# dataset params
+dataset:
+  dataset_A:
+    name: 'kitti_360'
+    modality: ['depth']
+    fill_in_label: True
+    do_augment: False
+    img_prop:
+      width: 512
+      height: 64
+      finesize: -1
