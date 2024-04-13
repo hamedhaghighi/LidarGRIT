@@ -1,10 +1,9 @@
 import functools
+
+import torch
 import torch.nn as nn
 
-
 from models.modules.util import ActNorm
-import torch
-
 
 
 def weights_init(m):

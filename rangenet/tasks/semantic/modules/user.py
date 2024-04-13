@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 # This file is covered by the LICENSE file in the root of this project.
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.backends.cudnn as cudnn
-import torchvision.transforms as transforms
-import imp
-import yaml
-import time
-from PIL import Image
-import __init__ as booger
 import collections
 import copy
-import cv2
+import imp
 import os
-import numpy as np
+import time
 
+import __init__ as booger
+import cv2
+import numpy as np
+import torch
+import torch.backends.cudnn as cudnn
+import torch.nn as nn
+import torch.optim as optim
+import torchvision.transforms as transforms
+import yaml
+from PIL import Image
 from tasks.semantic.modules.segmentator import *
 from tasks.semantic.postproc.KNN import KNN
 

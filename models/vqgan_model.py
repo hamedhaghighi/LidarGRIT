@@ -1,16 +1,19 @@
-import torch
 import numpy as np
-from .base_model import BaseModel
-from util import *
-from models.modules.diffusionmodules.model import Encoder, Decoder
-from models.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
-from models.modules.losses.vqperceptual import VQLPIPSWithDiscriminator
+import torch
+from tqdm import tqdm
+
+from models.modules.diffusionmodules.model import Decoder, Encoder
 from models.modules.discriminator.model import NLayerDiscriminator
 from models.modules.losses.lpips import LPIPS
-from models.vqgan import VQModel
-from util import class_to_dict, diff_augment, SphericalOptimizer
+from models.modules.losses.vqperceptual import VQLPIPSWithDiscriminator
+from models.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
 from models.util import init_net
-from tqdm import tqdm
+from models.vqgan import VQModel
+from util import *
+from util import SphericalOptimizer, class_to_dict, diff_augment
+
+from .base_model import BaseModel
+
 
 class VQGANModel(BaseModel):
     """ This class implements the pix2pix model, for learning a mapping from input images to output images given paired data.

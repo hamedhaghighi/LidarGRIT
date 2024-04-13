@@ -1,16 +1,17 @@
 import os
 import os.path as osp
+from glob import glob
+
 import numpy as np
 import torch
-from torch.utils.data import Dataset
-from torch.utils.data import Subset
 import torch.nn.functional as F
-from glob import glob
-from util.lidar import point_cloud_to_xyz_image
-from util import _map
-from dataset.kitti_odometry import KITTIOdometry
 import yaml
-from util import make_class_from_dict
+from torch.utils.data import Dataset, Subset
+
+from dataset.kitti_odometry import KITTIOdometry
+from util import _map, make_class_from_dict
+from util.lidar import point_cloud_to_xyz_image
+
 
 class BinaryScan(Dataset):
 

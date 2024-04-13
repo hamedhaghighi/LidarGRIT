@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 # This file is covered by the LICENSE file in the root of this project.
 
-import torch
 import os
-import numpy as np
-from rangenet.tasks.semantic.modules.segmentator import *
-import random
-from scipy import linalg
 import pickle
-from tqdm import trange, tqdm
+import random
+
+import numpy as np
+import torch
+from scipy import linalg
+from tqdm import tqdm, trange
+
+from rangenet.tasks.semantic.modules.segmentator import *
 from util import _map, prepare_data_for_seg
+
 
 class FID():
   def __init__(self, model, train_dataset, dataset_name, lidar, max_sample=1000, batch_size=8):

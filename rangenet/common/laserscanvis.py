@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # This file is covered by the LICENSE file in the root of this project.
 
-import vispy
-from vispy.scene import visuals, SceneCanvas
 import numpy as np
-from matplotlib import pyplot as plt
+import vispy
 from common.laserscan import LaserScan, SemLaserScan
+from matplotlib import pyplot as plt
+from vispy.scene import SceneCanvas, visuals
 
 
 class LaserScanVis:

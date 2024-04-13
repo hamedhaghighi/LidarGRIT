@@ -1,12 +1,14 @@
 """This module contains simple helper functions """
 from __future__ import print_function
-from math import exp
-from torch.autograd import Variable
-import torch.nn.functional as F
-import torch
-import numpy as np
-from PIL import Image
+
 import os
+from math import exp
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from PIL import Image
+from torch.autograd import Variable
 
 
 def tensor2im(input_image, imtype=np.uint8):

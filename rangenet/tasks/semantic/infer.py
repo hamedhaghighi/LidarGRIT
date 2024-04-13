@@ -2,16 +2,15 @@
 # This file is covered by the LICENSE file in the root of this project.
 
 import argparse
-import subprocess
 import datetime
-import yaml
-from shutil import copyfile
 import os
 import shutil
+import subprocess
+from shutil import copyfile
+
 import __init__ as booger
-
+import yaml
 from tasks.semantic.modules.user import *
-
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser("./infer.py")

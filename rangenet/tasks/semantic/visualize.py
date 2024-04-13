@@ -3,9 +3,9 @@
 
 import argparse
 import os
-import yaml
-import __init__ as booger
 
+import __init__ as booger
+import yaml
 from common.laserscan import LaserScan, SemLaserScan
 from common.laserscanvis import LaserScanVis
 

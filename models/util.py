@@ -1,9 +1,11 @@
-import os, hashlib
+import hashlib
+import importlib
+import os
+
 import requests
-from tqdm import tqdm
 import torch
 import torch.nn as nn
-import importlib
+from tqdm import tqdm
 
 URL_MAP = {
     "vgg_lpips": "https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1"

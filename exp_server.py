@@ -1,6 +1,7 @@
-import os
-from flask import Flask, render_template, send_file
 import argparse
+import os
+
+from flask import Flask, render_template, send_file
 
 app = Flask(__name__)
 

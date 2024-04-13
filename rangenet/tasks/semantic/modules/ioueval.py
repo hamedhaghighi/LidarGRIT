@@ -2,9 +2,10 @@
 
 # This file is covered by the LICENSE file in the root of this project.
 
-import torch
-import numpy as np
 import time
+
+import numpy as np
+import torch
 
 from rangenet.tasks.semantic.postproc.borderMask import borderMask
 

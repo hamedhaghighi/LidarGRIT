@@ -1,12 +1,13 @@
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
-from models.modules.diffusionmodules.model import Encoder, Decoder
+import torch.nn.functional as F
+
+from models.modules.diffusionmodules.model import Decoder, Encoder
+from models.modules.vqvae.quantize import EMAVectorQuantizer, GumbelQuantize
 from models.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
-from models.modules.vqvae.quantize import GumbelQuantize
-from models.modules.vqvae.quantize import EMAVectorQuantizer
 from models.util import instantiate_from_config
 from util import tanh_to_sigmoid
+
 
 class VQModel(nn.Module):
     def __init__(self,

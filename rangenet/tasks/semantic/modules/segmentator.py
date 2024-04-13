@@ -2,15 +2,18 @@
 # This file is covered by the LICENSE file in the root of this project.
 
 import imp
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from rangenet.tasks.semantic.postproc.CRF import CRF
-import rangenet.tasks.semantic.__init__ as booger
-from tasks.semantic.postproc.KNN import KNN
 import yaml
-import os
+from tasks.semantic.postproc.KNN import KNN
+
+import rangenet.tasks.semantic.__init__ as booger
+from rangenet.tasks.semantic.postproc.CRF import CRF
 from util import _map
+
 
 class Segmentator(nn.Module):
   def __init__(self, path_append="", strict=False, dataset_name = 'kitti', cfg_path=None):

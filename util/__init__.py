@@ -1,15 +1,16 @@
 """This package includes a miscellaneous collection of useful helper functions."""
 import gc
+import os
 import os.path as osp
 
 import cv2
+import matplotlib
+import matplotlib.cm as cm
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import matplotlib
-import matplotlib.cm as cm
-import os
+
 # from util.geometry import estimate_surface_normal
 
 m2ch = {'label':1, 'rgb':3, 'reflectance':1, 'mask':1, 'inv':1, 'depth':1}

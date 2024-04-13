@@ -1,12 +1,16 @@
 import os
-import torch
-from collections import OrderedDict
 from abc import ABC, abstractmethod
-from . import networks
+from collections import OrderedDict
+
+import torch
+
+from util import *
 from util.metrics.cov_mmd_1nna import compute_cd
 from util.metrics.depth import compute_depth_accuracy, compute_depth_error
 from util.util import SSIM
-from util import *
+
+from . import networks
+
 
 class BaseModel(ABC):
     """This class is an abstract base class (ABC) for models.

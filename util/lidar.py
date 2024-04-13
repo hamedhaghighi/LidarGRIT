@@ -1,15 +1,11 @@
 import os
 
 import einops
+import numba
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-import numba
-
-import numpy as np
-
-
-
 
 labelmap = {
     0: 0,  # "unlabeled"

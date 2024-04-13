@@ -1,24 +1,26 @@
-import numpy as np
-import os
-import sys
-import ntpath
-import time
 import datetime
+import ntpath
+import os
 import shutil
-from . import util, html
-from subprocess import Popen, PIPE
-from torch.utils.tensorboard import SummaryWriter
-from matplotlib import pyplot as plt
-from torchvision.utils import make_grid
-from util import colorize, postprocess, flatten
+import sys
+import time
+from glob import glob
+from subprocess import PIPE, Popen
+
+import numpy as np
 import open3d as o3d
 import open3d.visualization.rendering as rendering
 import torch
-from glob import glob
 import yaml
+from matplotlib import pyplot as plt
 from PIL import Image
+from torch.utils.tensorboard import SummaryWriter
+from torchvision.utils import make_grid
+
 import wandb
-from util import class_to_dict
+from util import class_to_dict, colorize, flatten, postprocess
+
+from . import html, util
 
 if sys.version_info[0] == 2:
     VisdomExceptionBase = Exception

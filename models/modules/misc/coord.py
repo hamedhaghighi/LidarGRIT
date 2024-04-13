@@ -1,5 +1,6 @@
 import torch
 
+
 class CoordStage(object):
     def __init__(self, n_embed, down_factor):
         self.n_embed = n_embed

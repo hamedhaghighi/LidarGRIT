@@ -2,12 +2,14 @@
 # This file is covered by the LICENSE file in the root of this project.
 
 import numpy as np
-from scipy import signal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy import signal
+
 # import __init__ as booger
 import rangenet.tasks.semantic.postproc.__init__ as booger
+
 
 class LocallyConnectedXYZLayer(nn.Module):
   def __init__(self, h, w, sigma, nclasses):

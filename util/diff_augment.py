@@ -6,11 +6,13 @@
 # Shengyu Zhao, Zhijian Liu, Ji Lin, Jun-Yan Zhu, and Song Han
 # https://arxiv.org/pdf/2006.10738
 
+import random
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
-import random
+
 
 def augment(x, policy="color,translation,cutout"):
     if policy:

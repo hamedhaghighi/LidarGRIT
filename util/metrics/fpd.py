@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 # This file is covered by the LICENSE file in the root of this project.
 
-import torch
 import os
-import numpy as np
 import pickle
+
+import numpy as np
 import scipy
+import torch
+from tqdm import tqdm, trange
+
 from util.metrics.pointnet import pretrained_pointnet
-from tqdm import trange, tqdm
+
 
 class FPD():
   def __init__(self, train_dataset, dataset_name, lidar, max_sample=5000, batch_size=8, device='cuda'):

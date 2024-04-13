@@ -2,23 +2,24 @@ import argparse
 import multiprocessing
 import os
 import os.path as osp
-from collections import defaultdict
+import pathlib
+from collections import defaultdict, namedtuple
 from glob import glob
 
 import joblib
 import matplotlib.cm as cm
 import numpy as np
 import torch
+import yaml
+from nuscenes.nuscenes import NuScenes
 from PIL import Image
 from tqdm import tqdm
-import yaml
-from util.lidar import point_cloud_to_xyz_image, labelmap
-from nuscenes.nuscenes import NuScenes
-import pathlib
+
 from dataset.kitti_odometry import KITTIOdometry
 from dataset.nuscene import NuScene
-from collections import namedtuple
 from util import make_class_from_dict
+from util.lidar import labelmap, point_cloud_to_xyz_image
+
 
 def car2hom(pc):
     return np.concatenate([pc[:, :3], np.ones((pc.shape[0], 1), dtype=pc.dtype)], axis=-1)

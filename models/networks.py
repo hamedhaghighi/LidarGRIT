@@ -1,11 +1,14 @@
+import functools
+
+import numpy as np
 import torch
 import torch.nn as nn
-from torch.nn import init
-import functools
-from torch.optim import lr_scheduler
-from util import disentangle_output
-import numpy as np
 import torch.nn.functional as F
+from torch.nn import init
+from torch.optim import lr_scheduler
+
+from util import disentangle_output
+
 ###############################################################################
 # Helper Functions
 ###############################################################################

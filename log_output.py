@@ -1,23 +1,25 @@
-import time
-# from data import create_dataset
-from models import create_model
-from util.visualizer import Visualizer
-from dataset.datahandler import get_data_loader
-from rangenet.tasks.semantic.modules.segmentator import *
-import yaml
 import argparse
+import hashlib
+import os
+import random
+import shutil
+import time
+from collections import defaultdict
+
 import numpy as np
 import torch
 import tqdm
-import os
-from util.lidar import LiDAR
+import yaml
+
+from dataset.datahandler import get_data_loader
+# from data import create_dataset
+from models import create_model
+from rangenet.tasks.semantic.modules.segmentator import *
 from util import *
-import shutil
-from collections import defaultdict
-import random
-import hashlib
-from util.metrics.depth import compute_depth_accuracy, compute_depth_error
+from util.lidar import LiDAR
 from util.metrics.cov_mmd_1nna import compute_cd
+from util.metrics.depth import compute_depth_accuracy, compute_depth_error
+from util.visualizer import Visualizer
 
 os.environ['LD_PRELOAD'] = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6" 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'

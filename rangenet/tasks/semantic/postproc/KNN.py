@@ -2,10 +2,11 @@
 # This file is covered by the LICENSE file in the root of this project.
 
 import math
+
+import __init__ as booger
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import __init__ as booger
 
 
 def get_gaussian_kernel(kernel_size=3, sigma=2, channels=1):

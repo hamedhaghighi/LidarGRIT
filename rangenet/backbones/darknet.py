@@ -1,8 +1,9 @@
 # This file was modified from https://github.com/BobLiu20/YOLOv3_PyTorch
 # It needed to be modified in order to accomodate for different strides in the
 
-import torch.nn as nn
 from collections import OrderedDict
+
+import torch.nn as nn
 import torch.nn.functional as F
 
 

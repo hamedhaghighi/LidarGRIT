@@ -85,8 +85,9 @@ Example:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from rangenet.common.onehot import oneHot
+
 import rangenet.tasks.semantic.postproc.__init__ as booger
+from rangenet.common.onehot import oneHot
 
 
 class borderMask(nn.Module):

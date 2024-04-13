@@ -3,14 +3,14 @@
 
 import argparse
 import os
-import yaml
 import sys
+
+import __init__ as booger
 import numpy as np
 import torch
-import __init__ as booger
-
-from tasks.semantic.modules.ioueval import iouEval
+import yaml
 from common.laserscan import SemLaserScan
+from tasks.semantic.modules.ioueval import iouEval
 
 # possible splits
 splits = ["train", "valid", "test"]

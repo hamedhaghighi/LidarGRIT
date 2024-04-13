@@ -1,9 +1,11 @@
 """Stripped version of https://github.com/richzhang/PerceptualSimilarity/tree/master/models"""
 
+from collections import namedtuple
+
 import torch
 import torch.nn as nn
 from torchvision import models
-from collections import namedtuple
+
 from models.util import get_ckpt_path
 
 

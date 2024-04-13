@@ -1,15 +1,17 @@
-import torch
 import numpy as np
+import torch
 import yaml
-from .base_model import BaseModel
-from util import *
-from models.vqgan import VQModel
-from models.modules.transformer.mingpt import GPT
-from models.util import init_net
+
 from models.modules.losses.lpips import LPIPS
+from models.modules.transformer.mingpt import GPT
 from models.modules.util import SOSProvider
+from models.util import init_net, instantiate_from_config
+from models.vqgan import VQModel
+from util import *
 from util import class_to_dict
-from models.util import instantiate_from_config
+
+from .base_model import BaseModel
+
 
 def disabled_train(self, mode=True):
     """Overwrite model.train with this function to make sure train/eval mode

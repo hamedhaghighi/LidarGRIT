@@ -1,6 +1,7 @@
+import numpy as np
 import torch
 from scipy.spatial.distance import jensenshannon
-import numpy as np
+
 
 def histogramdd(data, bins, range=None):
     """
