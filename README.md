@@ -83,4 +83,17 @@ python evaluate_from_samples.py --sample_dir checkpoints_trans_kitti_360/[EXP_NA
 - VQ-VAE and transformer Implementation from [CompVis](https://github.com/CompVis/taming-transformers)
 
 - Raydrop estimation inspired by [kazuto1011](https://github.com/kazuto1011/dusty-gan)
+
+ ## :books: Citation
+
+```bibtex
+@misc{haghighi2024taming,
+      title={Taming Transformers for Realistic Lidar Point Cloud Generation}, 
+      author={Hamed Haghighi and Amir Samadi and Mehrdad Dianati and Valentina Donzella and Kurt Debattista},
+      year={2024},
+      eprint={2404.05505},
+      archivePrefix={arXiv},
+      primaryClass={id='cs.CV' full_name='Computer Vision and Pattern Recognition' is_active=True alt_name=None in_archive='cs' is_general=False description='Covers image processing, computer vision, pattern recognition, and scene understanding. Roughly includes material in ACM Subject Classes I.2.10, I.4, and I.5.'}
+}
+```
  
