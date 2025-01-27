@@ -29,6 +29,14 @@ def cycle(iterable):
         for x in iterable:
             yield x
 
+def calc_compression_metrics(points_ref, points_gen):
+    points_ref = points_ref[~torch.all(points_ref == 0, dim=1)].cpu().numpy()
+    points_gen = points_gen[~torch.all(points_gen == 0, dim=1)].cpu().numpy()
+    # points_ref = points_ref.cpu().numpy()
+    # points_gen = points_gen.cpu().numpy()
+    return pcerror(points_ref,points_gen,None,'-r 1023',None)
+
+
 def calc_supervised_metrics(synth_depth, real_depth, real_mask, real_points, lidar):
     # self.forward()
     points_gen = lidar.depth_to_xyz(tanh_to_sigmoid(synth_depth))
@@ -46,6 +54,7 @@ def calc_supervised_metrics(synth_depth, real_depth, real_mask, real_points, lid
     depth_errors = {'depth/' + k: v.mean().item() for k ,v in errors.items()}
     scores.update(depth_accuracies)
     scores.update(depth_errors)
+    scores['p2p-PSNR'] = calc_compression_metrics(points_ref.squeeze() * lidar.max_depth,points_gen.squeeze()* lidar.max_depth)
     # if 'reflectance' in self.opt.model.modality_B:
     #     reflectance_ref = tanh_to_sigmoid(self.real_reflectance) + 1e-8
     #     reflectance_gen = tanh_to_sigmoid(self.rec_synth_reflectance if is_transformer else self.synth_reflectance) + 1e-8
@@ -143,7 +152,9 @@ def main(runner_cfg_path=None):
     parser.add_argument('--on_input', action='store_true', help='unsupervised metrics is computerd on dataset A')
     parser.add_argument('--no_inv', action='store_true', help='use it to calc unsupervised metrics on input inv, in case modality_B does not contain inv')
     parser.add_argument('--completion', action='store_true', help='use it to complete the distorted point clouds')
-    
+    parser.add_argument('--compression', action='store_true', help='use it to calc compression metrics')
+    parser.add_argument('--calc_mae', action='store_true', help='use it to complete the distorted point clouds')
+    N = 100
     cl_args = parser.parse_args()
     if runner_cfg_path is not None:
         cl_args.cfg = runner_cfg_path
@@ -151,11 +162,15 @@ def main(runner_cfg_path=None):
         cl_args.load = cl_args.cfg.split(os.path.sep)[1]
     split = 'test'
     if cl_args.ref_dataset_name == 'kitti':
-        seqs = [0, 0 ,1, 1, 2, 5] if not cl_args.fast_test else [11, 11 , 11]
-        ids = [1, 268,237, 158, 345, 586] if not cl_args.fast_test else [1, 2, 3]
+        # seqs = [11, 12 ,13, 11, 12, 13] if not cl_args.fast_test else [11, 11 , 11]
+        # ids = [1, 268,237, 158, 200, 100] if not cl_args.fast_test else [1, 2, 3]
+        seqs = [random.randint(11, 21) for _ in range(N)]
+        ids = [random.randint(0, 400) for _ in range(N)]
     elif cl_args.ref_dataset_name == 'kitti_360':
-        seqs= [0]
-        ids = [854]
+        seqs = [0] * (N//2)
+        seqs.extend([2] * (N//2))
+        ids = [random.randint(0, 11517) for _ in range(N//2)]
+        ids.extend([random.randint(4391, 19239) for _ in range(N//2)])
     opt = M_parser(cl_args.cfg, cl_args.data_dir, True)
     opt.model.norm_label = cl_args.norm_label
     torch.manual_seed(opt.training.seed)
@@ -217,14 +232,17 @@ def main(runner_cfg_path=None):
             _, H, W = data['depth'].shape
             mask = torch.zeros_like(data['depth']).repeat_interleave(4, dim=0)
             mask[0, ...] = 1
-            mask[1, :, ::4] = 1  # 25% beams
-            mask[2, :] = torch.empty(H, 1).bernoulli_(0.5)  # random 50% beams
+            mask[1, ::4, :] = 1  # 25% beams
+            mask[2, ::8, :] = 1  # 1/8 beams 
+            # mask[2, :] = torch.empty(H, 1).bernoulli_(0.5)  # random 50% beams
             mask[3, :] = torch.empty(H, W).bernoulli_(0.1)  # random 10% points
 
             data['depth'] = mask * data['depth']
             data['mask'] = mask * data['mask']
             data['points'] = mask[:, None].repeat_interleave(3, dim=1) * data['points']
         for j in range(4 if cl_args.completion else 1):
+            if cl_args.calc_mae and cl_args.completion and j!= 1:
+                continue
             data_n = {}
             for k ,v in data.items():
                 if k != 'path':
@@ -256,7 +274,7 @@ def main(runner_cfg_path=None):
                     synth_depth = model.synth_depth
                 else:
                     synth_depth = fetched_data['depth'] * synth_mask
-            if cl_args.completion and j == 1:
+            if (cl_args.completion and j == 1) or cl_args.compression:
                 scores = calc_supervised_metrics(synth_depth, fetched_data['depth'], fetched_data['mask'], fetched_data['points'], lidar_A)
                 for k, v in scores.items():
                     t_scores[k].append(v)
@@ -272,12 +290,13 @@ def main(runner_cfg_path=None):
             seq = seqs[i]
             _id = ids[i]
             # if is_two_dataset:
-            visualizer.display_current_results('',current_visuals, [seq, _id, cl_args.on_input, False, '_completion_' + str(j) if cl_args.completion else ''], ds_cfg, opt.dataset.dataset_A.name, lidar_A, ds_cfg_ref,\
-                    cl_args.ref_dataset_name ,lidar, save_img=True)
+            if cl_args.completion:
+                visualizer.display_current_results('',current_visuals, [seq, _id, cl_args.on_input, False, 'completion_' + str(j) if cl_args.completion else ''], ds_cfg, opt.dataset.dataset_A.name, lidar_A, ds_cfg_ref,\
+                        cl_args.ref_dataset_name ,lidar, save_img=True)
             # else:
                 # visualizer.display_current_results('', current_visuals, (seq, id),ds_cfg, opt.dataset.dataset_A.name, lidar, save_img=True)
         tq.update(1)
-    if cl_args.completion:
+    if cl_args.completion or cl_args.compression:
         for k, v in t_scores.items():
             t_scores[k] = int(np.mean(v) * 1e4) / 1e4
         print(t_scores)

@@ -112,7 +112,7 @@ class TransformerModel(BaseModel):
         self.real_A = torch.cat(data_list, dim=1)
 
     def top_k_logits(self, logits, k):
-        v, ix = torch.topk(logits, k)
+        v, ix = torch.topk(logits, min(k, logits.shape[-1]))
         out = logits.clone()
         out[out < v[..., [-1]]] = -float('Inf')
         return out
@@ -213,7 +213,6 @@ class TransformerModel(BaseModel):
                                    sample=True,
                                    top_k=top_k if top_k is not None else 100,
                                    callback=callback if callback is not None else lambda k: None)
-        
         out_dict, _ = self.decode_to_img(index_sample, quant_z.shape)
         b, _, h, w = quant_z.shape
         self.rec_z_indices = z_indices.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size
@@ -228,6 +227,7 @@ class TransformerModel(BaseModel):
 
     @torch.no_grad()
     def validate(self):
+        print('validate')
         logits, target = self.forward()
         loss_t = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
         self.val_t = loss_t.item()

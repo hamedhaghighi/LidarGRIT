@@ -145,15 +145,20 @@ class VQLPIPSWithDiscriminator(nn.Module):
 
         if optimizer_idx == 1:
             # second pass for discriminator update
-            if cond is None:
-                logits_real = self.discriminator(aug_cls(inputs.contiguous()).detach())
-                logits_fake = self.discriminator(aug_cls(reconstructions.contiguous()).detach())
-            else:
-                logits_real = self.discriminator(torch.cat((aug_cls(inputs.contiguous()).detach(), cond), dim=1))
-                logits_fake = self.discriminator(torch.cat((aug_cls(reconstructions.contiguous()).detach(), cond), dim=1))
+            if self.discriminator_weight > 0.0:
+                if cond is None:
+                    logits_real = self.discriminator(aug_cls(inputs.contiguous()).detach())
+                    logits_fake = self.discriminator(aug_cls(reconstructions.contiguous()).detach())
+                else:
+                    logits_real = self.discriminator(torch.cat((aug_cls(inputs.contiguous()).detach(), cond), dim=1))
+                    logits_fake = self.discriminator(torch.cat((aug_cls(reconstructions.contiguous()).detach(), cond), dim=1))
 
-            disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
-            d_loss = disc_factor * self.disc_loss(logits_real, logits_fake)
+                disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
+                d_loss = disc_factor * self.disc_loss(logits_real, logits_fake)
+            else:
+                d_loss = torch.tensor(0.0, requires_grad=True).to(inputs)
+                logits_real = torch.tensor(0.0).to(inputs)
+                logits_fake = torch.tensor(0.0).to(inputs)
 
             log = {"disc": d_loss.clone().detach().mean(),
                    "logits_real": logits_real.detach().mean(),

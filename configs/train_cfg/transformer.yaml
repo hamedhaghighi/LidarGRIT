@@ -4,32 +4,35 @@
 training:
   n_epochs: 100
   lr: 4.5e-6
-  batch_size: 2
+  batch_size: 1
   test: False
   gpu_ids: [0]
-  checkpoints_dir: './checkpoints'
-  epoch: 'latest'
+  checkpoints_dir: './new_checkpoints_trans'
+  epoch: 'best'
   continue_train: False
-  display_freq: 50
+  display_freq: 20000
   print_freq: 50
   save_latest_freq: 1000
   verbose: False
   suffix : ''
   seed: 6
-  lr_policy: 'linear'
-  lr_decay_iters: 50
+  lr_policy: 'identity'
+  lr_decay_iters: 10000000
   beta1: 0.5
 
 # model params
 model:
   name: 'transformer'
   norm_label: False
-  raster_type: 'c2c'
+  raster_type: 'p2p'
+  vq_ckpt_path: ./checkpoints/d53e32e5e14b6a4b997746f8e0bd480367fefe955c0097d40322835a342d82f8/best.pth
   transformer_config:
-    n_layer: 10
-    n_head: 16
-    n_embd: 1024
-  vq_ckpt_path: ./checkpoints/test/latest.pth
+    n_layer: 6
+    n_head: 8
+    n_embd: 256
+    embd_pdrop: 0.2
+    resid_pdrop: 0.0
+    attn_pdrop: 0.0
   cond_stage_config:
     target: models.modules.misc.coord.CoordStage
     params:
@@ -44,8 +47,8 @@ dataset:
     name: 'kitti'
     modality: ['depth']
     fill_in_label: True
-    do_augment: False
+    do_gp: False
     img_prop:
-      width: 512
+      width: 256
       height: 64
       finesize: -1

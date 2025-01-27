@@ -1,5 +1,4 @@
-# data_dir: '/media/hamed/Local Disk/Phd_datasets/KITTI-360/'
-data_dir: '/media/hamed/Local Disk/Phd_datasets/KITTI-360/'
+data_dir: '/localstore/LocalUsers/haghig_h/KITTI-360/data_3d_raw/'
 min_depth: 1.45
 max_depth: 80.0
 height: 64

@@ -27,4 +27,8 @@ checkpoints_kitti_360/
 checkpoints_kitti/
 checkpoints_trans_kitti/
 checkpoints_trans_kitti_360/
-
+configs
+temp
+new_checkpoints
+new_checkpoints_trans
+search_checkpoints

@@ -139,7 +139,7 @@ class VQGANModel(BaseModel):
                 setattr(self, 'synth_' + k , v)
             rec_loss = (torch.abs(out - self.real_A) * self.real_mask).sum(dim=[1,2,3])/self.real_mask.sum(dim=[1,2,3])
             loss = rec_loss
-            loss_dict = {'total':loss, 'emb':emb_loss, 'rec':rec_loss}
+            loss_dict = {'total':loss, 'emb':emb_loss, 'rec':rec_loss, 'lr': torch.tensor(optim.param_groups[0]['lr'])}
             if current_step % 100 == 0: 
                 print_msg = f'Step: {current_step}'
                 for k , v in loss_dict.items():
@@ -166,14 +166,14 @@ class VQGANModel(BaseModel):
         self.forward()                   # compute fake images: G(A)
         # update D
         self.optimizers[1].zero_grad()     # set D's gradients to zero
-        self.loss_D, loss_D_dict = self.netVQ.module.training_step(self.real_A, self.fake_B, 1, global_step=self.global_step, aug_cls=self.Aug)
+        self.loss_D, loss_D_dict = self.netVQ.module.training_step(self.real_A[:, 0:1], self.fake_B, 1, global_step=self.global_step, aug_cls=self.Aug)
         for k, v in loss_D_dict.items():
             setattr(self, 'loss_' + k, v)
         self.loss_D.backward()                # calculate gradients for D
         self.optimizers[1].step()          # update D's weights
         # update G
         self.optimizers[0].zero_grad()     # set G's gradients to zero
-        self.loss_total_G, loss_G_dict = self.netVQ.module.training_step(self.real_A, self.fake_B, 0, global_step=self.global_step,\
+        self.loss_total_G, loss_G_dict = self.netVQ.module.training_step(self.real_A[:, 0:1], self.fake_B, 0, global_step=self.global_step,\
                                                                                   aug_cls=self.Aug, qloss=self.qloss, lidar=self.lidar, mask_logits=self.synth_mask_logit, real_mask=self.real_mask)
         for k, v in loss_G_dict.items():
             setattr(self, 'loss_' + k, v)

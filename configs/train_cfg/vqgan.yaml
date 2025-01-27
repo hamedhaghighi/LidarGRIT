@@ -2,21 +2,22 @@
 
 #Training & Experiment params
 training:
-  n_epochs: 100
-  lr: 4.5e-6
-  batch_size: 2
+  n_epochs: 70
+  lr: 1.e-6
+  batch_size: 8
   test: False
   gpu_ids: [0]
-  checkpoints_dir: './checkpoints'
+  checkpoints_dir: './search_checkpoints'
   epoch: 'latest'
   continue_train: False
-  display_freq: 50
+  display_freq: 20000
   print_freq: 50
   save_latest_freq: 1000
   verbose: False
+  suffix : ''
   seed: 6
   lr_policy: 'identity'
-  lr_decay_iters: 50
+  lr_decay_iters: 10000000
   beta1: 0.5
 
 # model params
@@ -26,10 +27,10 @@ model:
   modality_B: ['depth']
   out_ch: ['depth', 'mask']
   norm_label: False
-  augment: []
+  augment: ['row_drop', 'col_drop']
   vqmodel:
     embed_dim: 128
-    n_embed: 1024
+    n_embed: 512
     ddconfig:
       has_attention: False
       symmetric: True
@@ -39,22 +40,21 @@ model:
       in_channels: 1
       out_ch: 2
       ch: 64
-      # ch_mult: [1,1,2,2,4]  # num_down = len(ch_mult)-1
-      ch_mult: [1,1,2]  # num_down = len(ch_mult)-1
+      ch_mult: [1,1,2]
       num_res_blocks: 1
-      attn_resolutions: [16]
-      dropout: 0.0
+      attn_resolutions: [32]
+      dropout: 0.2
     lossconfig:
       target: models.modules.losses.vqperceptual.VQLPIPSWithDiscriminator
       params:
-        lambda_mask: 0.1
+        lambda_mask: 0.0001
         perceptual_weight: 0.0
         disc_conditional: False
         disc_in_channels: 1
-        disc_start: 0
+        disc_start: 0.0
         disc_weight: 0.0
         codebook_weight: 1.0
-        lambda_nd: 1.0
+        lambda_nd: 0.0
 
 
 
@@ -64,7 +64,7 @@ dataset:
     name: 'kitti'
     modality: ['depth']
     fill_in_label: True
-    do_augment: False
+    do_gp: False
     img_prop:
       width: 256
       height: 64

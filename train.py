@@ -99,7 +99,7 @@ def modify_opt_for_fast_test(opt):
     opt.print_freq = 1
     opt.save_latest_freq = 1
     opt.max_dataset_size = 10
-    opt.batch_size = 2
+    opt.batch_size = 1
 
 
 def check_exp_exists(opt, cfg_args):
@@ -409,7 +409,7 @@ def main(runner_cfg_path=None):
                 scores['fpd'] = fpd_cls.fpd_score(torch.cat(fpd_points, dim=0))
             visualizer.plot_current_losses('unsupervised_metrics', epoch, scores, g_steps)
             visualizer.print_current_losses('unsupervised_metrics', epoch, e_steps, scores, val_tq)
-        best_metric_key = "val_t" if is_transformer else 'jsd'
+        best_metric_key = "val_t" if is_transformer else 'fpd'
         best_metric_holder = losses if is_transformer else scores
         if best_metric_holder[best_metric_key] < min_best and opt.training.isTrain:
             min_best = best_metric_holder[best_metric_key]

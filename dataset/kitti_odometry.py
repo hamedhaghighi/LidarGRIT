@@ -263,9 +263,7 @@ class  KITTIOdometry(torch.utils.data.Dataset):
                 point_cloud = np.concatenate([point_cloud, rgb.astype('float32')], axis=1)
             H , W = self.DATA.height, self.DATA.width
             fov_up, fov_down = self.DATA.fov_up, self.DATA.fov_down
-            
             points, _ = point_cloud_to_xyz_image(point_cloud, H=H, W=W, fov_down=fov_down, fov_up=fov_up, is_sorted=self.is_sorted, limited_view=self.limited_view)
-            
         out = {}
         out["points"] = points[..., :3]
         if "reflectance" in self.modality:

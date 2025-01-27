@@ -1,4 +1,4 @@
-data_dir: '/media/hamed/Local Disk/Phd_datasets/KITTI/dataset'
+data_dir: '/localstore/LocalUsers/haghig_h/KITTI/projected/'
 # data_dir: '/media/haghig_h/Extreme SSD/KITTI/projected'
 min_depth: 0.9
 max_depth: 120.0
@@ -7,7 +7,7 @@ width: 2048
 fov_up: 3
 fov_down: -25
 is_sorted: True
-is_raw: True
+is_raw: False
 learning_map:
   0 : 0     # "unlabeled"
   1 : 0     # "outlier" mapped to "unlabeled" --------------------------mapped

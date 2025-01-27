@@ -48,11 +48,12 @@ def to_np(tensor):
     return tensor.detach().cpu().numpy()
 
 class Features10k(torch.utils.data.Dataset):
-    def __init__(self, root, min_depth, max_depth, lidargen=False, fpd=False):
+    def __init__(self, root, min_depth, max_depth, lidargen=False, fpd=False, ref_dataset_name='kitti'):
         self.lidargen = lidargen
         self.fpd = fpd
         self.sample_path_list = sorted(Path(root).glob("*.pth"))
         self.min_depth, self.max_depth = min_depth, max_depth
+        self.ref_dataset_name = ref_dataset_name
     def __getitem__(self, index):
         sample_path = self.sample_path_list[index]
         img = torch.load(sample_path, map_location="cpu")
@@ -62,7 +63,7 @@ class Features10k(torch.utils.data.Dataset):
         if self.lidargen:
             img[[0]] = torch.exp2(img[[0]]*6) - 1
         depth = img[[0]]
-        if self.fpd:
+        if self.fpd and self.ref_dataset_name == 'kitti_360':
             mask = torch.logical_and(depth > 0.5, depth < 63.0).float() # based on lidargen evaluation
         else:
             mask = torch.logical_and(depth > self.min_depth, depth < self.max_depth).float()
@@ -123,7 +124,7 @@ def main(runner_cfg_path=None):
     h = 64 
     w = 1024 if cl_args.ref_dataset_name == 'kitti_360' else 256
     lidar = LiDAR(cfg=ds_cfg, height=h, width=w).to(device)
-    dataset = Features10k(cl_args.sample_dir, min_depth, max_depth, cl_args.lidargen, cl_args.fpd)
+    dataset = Features10k(cl_args.sample_dir, min_depth, max_depth, cl_args.lidargen, cl_args.fpd, cl_args.ref_dataset_name)
     gen_loader = DataLoader(dataset, batch_size=8, num_workers=4, shuffle=True, drop_last=False)
     N = 8 if cl_args.fast_test else  cl_args.num_samples
     gen_loader_iter = iter(gen_loader)
