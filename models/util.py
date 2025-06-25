@@ -7,17 +7,12 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-URL_MAP = {
-    "vgg_lpips": "https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1"
-}
+URL_MAP = {"vgg_lpips": "https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1"}
 
-CKPT_MAP = {
-    "vgg_lpips": "vgg.pth"
-}
+CKPT_MAP = {"vgg_lpips": "vgg.pth"}
 
-MD5_MAP = {
-    "vgg_lpips": "d507d7349b931f0638a25a48a722f98a"
-}
+MD5_MAP = {"vgg_lpips": "d507d7349b931f0638a25a48a722f98a"}
+
 
 def init_weights(net):
     """Initialize network weights.
@@ -30,15 +25,16 @@ def init_weights(net):
     We use 'normal' in the original pix2pix and CycleGAN paper. But xavier and kaiming might
     work better for some applications. Feel free to try yourself.
     """
+
     def init_func(m):  # define the initialization function
         classname = m.__class__.__name__
-        if classname.find('Conv') != -1:
+        if classname.find("Conv") != -1:
             nn.init.normal_(m.weight.data, 0.0, 0.02)
-        elif classname.find('BatchNorm') != -1:
+        elif classname.find("BatchNorm") != -1:
             nn.init.normal_(m.weight.data, 1.0, 0.02)
             nn.init.constant_(m.bias.data, 0)
 
-    print('initialize network ...')
+    print("initialize network ...")
     net.apply(init_func)  # apply the initialization function <init_func>
 
 
@@ -53,7 +49,7 @@ def init_net(net, gpu_ids=[], initialize_weights=False):
     Return an initialized network.
     """
     if len(gpu_ids) > 0:
-        assert(torch.cuda.is_available())
+        assert torch.cuda.is_available()
         net.to(gpu_ids[0])
         net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
     if initialize_weights:
@@ -68,10 +64,12 @@ def get_obj_from_str(string, reload=False):
         importlib.reload(module_imp)
     return getattr(importlib.import_module(module, package=None), cls)
 
+
 def instantiate_from_config(config):
     if not "target" in config:
         raise KeyError("Expected key `target` to instantiate.")
     return get_obj_from_str(config["target"])(**config.get("params", dict()))
+
 
 def download(url, local_path, chunk_size=1024):
     os.makedirs(os.path.split(local_path)[0], exist_ok=True)
@@ -201,15 +199,16 @@ def retrieve(
 
 
 if __name__ == "__main__":
-    config = {"keya": "a",
-              "keyb": "b",
-              "keyc":
-                  {"cc1": 1,
-                   "cc2": 2,
-                   }
-              }
+    config = {
+        "keya": "a",
+        "keyb": "b",
+        "keyc": {
+            "cc1": 1,
+            "cc2": 2,
+        },
+    }
     from omegaconf import OmegaConf
+
     config = OmegaConf.create(config)
     print(config)
     retrieve(config, "keya")
-

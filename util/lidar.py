@@ -44,6 +44,7 @@ labelmap = {
     259: 5,  # "moving-other"-vehicle to "other-vehicle" ----------------mapped
 }
 
+
 # @numba.jit
 def scatter(arrary, index, value):
     for (h, w), v in zip(index, value):
@@ -60,7 +61,16 @@ def projection(source, grid, order, H, W):
     return proj
 
 
-def point_cloud_to_xyz_image(points, H=64, W=2048, fov_up=3.0, fov_down=-25.0, is_sorted=True, limited_view=False, tag=None):
+def point_cloud_to_xyz_image(
+    points,
+    H=64,
+    W=2048,
+    fov_up=3.0,
+    fov_down=-25.0,
+    is_sorted=True,
+    limited_view=False,
+    tag=None,
+):
     if tag is not None:
         C = points.shape[1]
         proj = np.zeros((H * W, C), dtype=np.float32)
@@ -74,12 +84,12 @@ def point_cloud_to_xyz_image(points, H=64, W=2048, fov_up=3.0, fov_down=-25.0, i
     depth = np.linalg.norm(xyz, ord=2, axis=1)
     order = np.argsort(-depth)
     if not is_sorted:
-        fov_up = fov_up / 180.0 * np.pi      # field of view up in rad
-        fov_down = fov_down/ 180.0 * np.pi  # field of view down in rad
+        fov_up = fov_up / 180.0 * np.pi  # field of view up in rad
+        fov_down = fov_down / 180.0 * np.pi  # field of view down in rad
         fov = abs(fov_down) + abs(fov_up)
         pitch = np.arcsin(z / depth)
         grid_h = 1.0 - (pitch + abs(fov_down)) / fov
-        grid_h = np.clip(np.round(grid_h * H), 0, H-1)
+        grid_h = np.clip(np.round(grid_h * H), 0, H - 1)
     else:
         # the i-th quadrant
         # suppose the points are ordered counterclockwise
@@ -99,7 +109,7 @@ def point_cloud_to_xyz_image(points, H=64, W=2048, fov_up=3.0, fov_down=-25.0, i
                 line_idx -= 1
             else:
                 break
-        
+
     # horizontal grid
     yaw = -np.arctan2(y, x)  # [-pi,pi]
     if limited_view:
@@ -110,6 +120,7 @@ def point_cloud_to_xyz_image(points, H=64, W=2048, fov_up=3.0, fov_down=-25.0, i
     grid = np.stack((grid_h, grid_w), axis=-1).astype(np.int32)
     proj = projection(points, grid, order, H, W)
     return proj, grid
+
 
 class Coordinate(nn.Module):
     def __init__(self, min_depth, max_depth, shape, drop_const=0) -> None:
@@ -131,13 +142,12 @@ class Coordinate(nn.Module):
     def denormalize_minmax(tensor, vmin: float, vmax: float):
         return tensor * (vmax - vmin) + vmin
 
-
     def normalize_depth(self, tensor):
         return self.normalize_minmax(tensor, self.min_depth, self.max_depth)
-    
+
     def denormalize_depth(self, tensor):
         return self.denormalize_minmax(tensor, self.min_depth, self.max_depth)
-    
+
     def invert_depth(self, norm_depth):
         # depth to inverse depth
         depth = self.denormalize_minmax(norm_depth, self.min_depth, self.max_depth)
@@ -157,12 +167,12 @@ class Coordinate(nn.Module):
             return depth
 
     def pol_to_xyz(self, polar):
-        assert polar.dim() == 4 # B, C, H, W
+        assert polar.dim() == 4  # B, C, H, W
         grid_cos = torch.cos(self.angle)
         grid_sin = torch.sin(self.angle)
         if grid_cos.shape[2] != polar.shape[2] or grid_cos.shape[3] != polar.shape[3]:
-            grid_cos = grid_cos[:, :, :polar.shape[2], :polar.shape[3]]
-            grid_sin = grid_sin[:, :, :polar.shape[2], :polar.shape[3]]
+            grid_cos = grid_cos[:, :, : polar.shape[2], : polar.shape[3]]
+            grid_sin = grid_sin[:, :, : polar.shape[2], : polar.shape[3]]
         grid_x = polar * grid_cos[:, [0]] * grid_cos[:, [1]]
         grid_y = polar * grid_cos[:, [0]] * grid_sin[:, [1]]
         grid_z = polar * grid_sin[:, [0]]
@@ -171,7 +181,7 @@ class Coordinate(nn.Module):
     def xyz_to_pol(self, xyz):
         return torch.norm(xyz, p=2, dim=1, keepdim=True)
 
-    def inv_to_xyz(self, inv_depth, tol=1e-8): # inv_depth [0, 1]
+    def inv_to_xyz(self, inv_depth, tol=1e-8):  # inv_depth [0, 1]
         valid = torch.abs(inv_depth - self.drop_const) > tol
         depth = self.revert_depth(inv_depth)  # [0,1] depth
         depth = depth * (self.max_depth - self.min_depth) + self.min_depth
@@ -179,8 +189,8 @@ class Coordinate(nn.Module):
         depth *= valid
         points = self.pol_to_xyz(depth)
         return points
-    
-    def depth_to_xyz(self, depth, tol=1e-8): # depth [0, 1]
+
+    def depth_to_xyz(self, depth, tol=1e-8):  # depth [0, 1]
         valid = torch.abs(depth - self.drop_const) > tol
         depth = depth * (self.max_depth - self.min_depth) + self.min_depth
         depth /= self.max_depth
@@ -238,22 +248,22 @@ class LiDAR(Coordinate):
     ):
         num_ring, num_points = cfg.height, cfg.width
         min_depth, max_depth = cfg.min_depth, cfg.max_depth
-        angle_dir = lambda dir: os.path.join(os.path.sep.join(dir.split(os.path.sep)[:-1]),'angles.pt')
+        angle_dir = lambda dir: os.path.join(
+            os.path.sep.join(dir.split(os.path.sep)[:-1]), "angles.pt"
+        )
         self.angle_file = angle_dir(cfg.data_dir)
         assert os.path.exists(self.angle_file), self.angle_file
         self.fov_down = cfg.fov_down
         self.fov_up = cfg.fov_up
         self.height, self.width = height, width
         super().__init__(
-            min_depth=min_depth,
-            max_depth=max_depth,
-            shape=(num_ring, num_points)
+            min_depth=min_depth, max_depth=max_depth, shape=(num_ring, num_points)
         )
 
     def init_coordmap(self, H, W):
         angle = torch.load(self.angle_file)[None]
-        # fov_up = self.fov_up / 180.0 * np.pi     
-        # fov_down = self.fov_down / 180.0 * np.pi  
+        # fov_up = self.fov_up / 180.0 * np.pi
+        # fov_down = self.fov_down / 180.0 * np.pi
         # fov = abs(fov_down) + abs(fov_up)
         # pitch = (1 - (torch.arange(H) / H)) * fov - abs(fov_down)
         # # if self.has_rgb:
@@ -264,6 +274,3 @@ class LiDAR(Coordinate):
         # angle = torch.stack([pitch_grid, yaw_grid], dim=0)[None]
         angle = F.interpolate(angle, size=(self.height, self.width), mode="bilinear")
         return angle
-
-
-

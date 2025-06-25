@@ -31,6 +31,7 @@ def rand_brightness(x, band=0.5, p=1.0):
     y = x + brightness
     return y
 
+
 def rand_pix_drop(x):
     B, _, _, _ = x.shape
     mask_pix = x.bernoulli(p=random.random())
@@ -39,10 +40,13 @@ def rand_pix_drop(x):
     y[mask_B] = x[mask_B]
     return y
 
+
 def rand_row_drop(x, p=1.0):
     B, C, H, W = x.shape
     device = x.device
-    mask_row = torch.empty((B, 1, H, 1), device=device).bernoulli_(p=random.random()) # p in [0, 0.5]
+    mask_row = torch.empty((B, 1, H, 1), device=device).bernoulli_(
+        p=random.random()
+    )  # p in [0, 0.5]
     y = x * mask_row + 0.0 * (1 - mask_row)
     mask_b = torch.empty((B), device=device).bernoulli_(p=0.8).bool()
     y[mask_b] = x[mask_b]
@@ -52,11 +56,14 @@ def rand_row_drop(x, p=1.0):
 def rand_col_drop(x, p=1.0):
     B, C, H, W = x.shape
     device = x.device
-    mask_col = torch.empty((B, 1, 1, W), device=device).bernoulli_(p=random.random()) # p in [0, 0.5]
+    mask_col = torch.empty((B, 1, 1, W), device=device).bernoulli_(
+        p=random.random()
+    )  # p in [0, 0.5]
     y = x * mask_col + 0.0 * (1 - mask_col)
     mask_b = torch.empty((B), device=device).bernoulli_(p=0.8).bool()
     y[mask_b] = x[mask_b]
     return y
+
 
 def rand_saturation(x, band=1.0, p=1.0):
     B, _, _, _ = x.shape
@@ -128,7 +135,6 @@ def rand_cutout(x, ratio=0.5, p=1.0):
     y[~mask] = x[~mask]
 
     return y
-
 
 
 AUGMENT_FNS = {

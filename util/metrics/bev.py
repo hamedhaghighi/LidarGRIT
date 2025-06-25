@@ -24,13 +24,19 @@ def histogramdd(data, bins, range=None):
         range = [(range[0], range[1]), (range[2], range[3])]
     # Calculate bin width for each dimension
     bin_widths = [(r[1] - r[0]) / bins for r in range]
-    bin_indices = ((data - torch.tensor([r[0] for r in range], dtype=data.dtype, device=data.device)) /
-                   torch.tensor(bin_widths, dtype=data.dtype, device=data.device)).long()
-    
+    bin_indices = (
+        (
+            data
+            - torch.tensor([r[0] for r in range], dtype=data.dtype, device=data.device)
+        )
+        / torch.tensor(bin_widths, dtype=data.dtype, device=data.device)
+    ).long()
+
     bin_indices.clamp_(0, bins - 1)
     for i in np.arange(N):
         hist[tuple(bin_indices[i])] += 1
     return hist
+
 
 def point_cloud_to_histogram(
     point_cloud: torch.Tensor,

@@ -18,8 +18,9 @@ def disabled_train(self, mode=True):
     does not change anymore."""
     return self
 
+
 class TransformerModel(BaseModel):
-    """ This class implements the pix2pix model, for learning a mapping from input images to output images given paired data.
+    """This class implements the pix2pix model, for learning a mapping from input images to output images given paired data.
 
     The model training requires '--dataset_mode aligned' dataset.
     By default, it uses a '--netG unet256' U-Net generator,
@@ -28,7 +29,9 @@ class TransformerModel(BaseModel):
 
     pix2pix paper: https://arxiv.org/pdf/1611.07004.pdf
     """
+
     global_step = 0
+
     def __init__(self, opt, lidar):
         """Initialize the pix2pix class.
 
@@ -37,44 +40,50 @@ class TransformerModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['t']
-        
+        self.loss_names = ["t"]
+
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
-        self.model_names = ['Transformer']
+        self.model_names = ["Transformer"]
         # define networks (both generator and discriminator)
-        
+
         opt_m = opt.model
         opt_t = opt.training
-        self.eval_metrics = ['val_t'] + ([] if self.isTrain else ['cd', 'depth_accuracies', 'depth_errors'])
+        self.eval_metrics = ["val_t"] + (
+            [] if self.isTrain else ["cd", "depth_accuracies", "depth_errors"]
+        )
         self.be_unconditional = True
         self.sos_token = 0
         self.learning_rate = opt_t.lr * opt_t.batch_size
 
-        if 'depth' in opt_m.modality_B:
-            self.visual_names.extend(['rec_synth_depth', 'synth_depth'])
+        if "depth" in opt_m.modality_B:
+            self.visual_names.extend(["rec_synth_depth", "synth_depth"])
 
-        if 'reflectance' in opt_m.modality_B:
-            self.visual_names.extend(['real_reflectance', 'synth_reflectance'])
+        if "reflectance" in opt_m.modality_B:
+            self.visual_names.extend(["real_reflectance", "synth_reflectance"])
             # self.eval_metrics.append('reflectance_errors')
-        self.visual_names.extend(['z_indices', 'rec_z_indices'])
-        
+        self.visual_names.extend(["z_indices", "rec_z_indices"])
+
         # same_kernel_size = opt.dataset.dataset_A.img_prop.width == opt.dataset.dataset_A.img_prop.height
-        vqcfg_dict = yaml.safe_load(open(opt_m.vqcfg_path, 'r'))['model']['vqmodel']
-        vqcfg_dict['ckpt_path'] = opt_m.vq_ckpt_path
-        model = VQModel(**vqcfg_dict, out_ch=opt_m.out_ch).to(self.gpu_ids[0] if len(self.gpu_ids) > 0 else 'cpu')
+        vqcfg_dict = yaml.safe_load(open(opt_m.vqcfg_path, "r"))["model"]["vqmodel"]
+        vqcfg_dict["ckpt_path"] = opt_m.vq_ckpt_path
+        model = VQModel(**vqcfg_dict, out_ch=opt_m.out_ch).to(
+            self.gpu_ids[0] if len(self.gpu_ids) > 0 else "cpu"
+        )
         model = model.eval()
         model.train = disabled_train
         self.first_stage_model = model
         opt_m_dict = class_to_dict(opt_m)
-        cond_stage_config = opt_m_dict['cond_stage_config']
+        cond_stage_config = opt_m_dict["cond_stage_config"]
 
         if cond_stage_config == "__is_first_stage__":
             print("Using first stage also as cond stage.")
             self.cond_stage_model = self.first_stage_model
         elif cond_stage_config == "__is_unconditional__" or self.be_unconditional:
-            print(f"Using no cond stage. Assuming the training is intended to be unconditional. "
-                  f"Prepending {self.sos_token} as a sos token.")
+            print(
+                f"Using no cond stage. Assuming the training is intended to be unconditional. "
+                f"Prepending {self.sos_token} as a sos token."
+            )
             self.be_unconditional = True
             self.cond_stage_model = SOSProvider(self.sos_token)
         else:
@@ -83,7 +92,9 @@ class TransformerModel(BaseModel):
             model.train = disabled_train
             self.cond_stage_model = model
 
-        self.netTransformer = init_net(GPT(**opt_m_dict['transformer_config']), self.gpu_ids)
+        self.netTransformer = init_net(
+            GPT(**opt_m_dict["transformer_config"]), self.gpu_ids
+        )
         self.permuter = None
         self.downsample_cond_size = -1
         # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
@@ -95,16 +106,16 @@ class TransformerModel(BaseModel):
             self.optimizer = self.configure_optimizers()
             self.optimizers.append(self.optimizer)
 
-   
     def data_dependent_initialize(self, data):
         return
+
     def set_seg_model(self, model):
         return
 
     def set_input(self, data):
         data = fetch_reals(data, self.lidar, self.device)
         for k, v in data.items():
-            setattr(self, 'real_' + k, v)
+            setattr(self, "real_" + k, v)
         data_list = []
         for m in self.opt.model.modality_A:
             assert m in data
@@ -114,22 +125,30 @@ class TransformerModel(BaseModel):
     def top_k_logits(self, logits, k):
         v, ix = torch.topk(logits, min(k, logits.shape[-1]))
         out = logits.clone()
-        out[out < v[..., [-1]]] = -float('Inf')
+        out[out < v[..., [-1]]] = -float("Inf")
         return out
-    
+
     @torch.no_grad()
-    def sample(self, x, c, steps, temperature=1.0, sample=False, top_k=None,
-               callback=lambda k: None):
-        x = torch.cat((c,x),dim=1)
+    def sample(
+        self,
+        x,
+        c,
+        steps,
+        temperature=1.0,
+        sample=False,
+        top_k=None,
+        callback=lambda k: None,
+    ):
+        x = torch.cat((c, x), dim=1)
         block_size = self.netTransformer.module.get_block_size()
         # assert not self.netTransformer.training
         if self.pkeep <= 0.0:
             # one pass suffices since input is pure noise anyway
-            assert len(x.shape)==2
-            noise_shape = (x.shape[0], steps-1)
-            #noise = torch.randint(self.transformer.config.vocab_size, noise_shape).to(x)
-            noise = c.clone()[:,x.shape[1]-c.shape[1]:-1]
-            x = torch.cat((x,noise),dim=1)
+            assert len(x.shape) == 2
+            noise_shape = (x.shape[0], steps - 1)
+            # noise = torch.randint(self.transformer.config.vocab_size, noise_shape).to(x)
+            noise = c.clone()[:, x.shape[1] - c.shape[1] : -1]
+            x = torch.cat((x, noise), dim=1)
             logits, _ = self.netTransformer(x)
             # take all logits for now and scale by temp
             logits = logits / temperature
@@ -141,19 +160,21 @@ class TransformerModel(BaseModel):
             # sample from the distribution or take the most likely
             if sample:
                 shape = probs.shape
-                probs = probs.reshape(shape[0]*shape[1],shape[2])
+                probs = probs.reshape(shape[0] * shape[1], shape[2])
                 ix = torch.multinomial(probs, num_samples=1)
-                probs = probs.reshape(shape[0],shape[1],shape[2])
-                ix = ix.reshape(shape[0],shape[1])
+                probs = probs.reshape(shape[0], shape[1], shape[2])
+                ix = ix.reshape(shape[0], shape[1])
             else:
                 _, ix = torch.topk(probs, k=1, dim=-1)
             # cut off conditioning
-            x = ix[:, c.shape[1]-1:]
+            x = ix[:, c.shape[1] - 1 :]
         else:
             for k in range(steps):
                 callback(k)
-                assert x.size(1) <= block_size # make sure model can see conditioning
-                x_cond = x if x.size(1) <= block_size else x[:, -block_size:]  # crop context if needed
+                assert x.size(1) <= block_size  # make sure model can see conditioning
+                x_cond = (
+                    x if x.size(1) <= block_size else x[:, -block_size:]
+                )  # crop context if needed
                 logits, _ = self.netTransformer(x_cond)
                 # pluck the logits at the final step and scale by temperature
                 logits = logits[:, -1, :] / temperature
@@ -170,14 +191,18 @@ class TransformerModel(BaseModel):
                 # append to the sequence and continue
                 x = torch.cat((x, ix), dim=1)
             # cut off conditioning
-            x = x[:, c.shape[1]:]
+            x = x[:, c.shape[1] :]
         return x
 
     @torch.no_grad()
     def encode_to_z(self, x):
         quant_z, _, info = self.first_stage_model.encode(x)
 
-        indices = info[2].view(quant_z.shape[0], -1) if self.raster_type == 'p2p' else info[2].view(quant_z.shape[0] * quant_z.shape[2], -1)
+        indices = (
+            info[2].view(quant_z.shape[0], -1)
+            if self.raster_type == "p2p"
+            else info[2].view(quant_z.shape[0] * quant_z.shape[2], -1)
+        )
         if self.permuter is not None:
             indices = self.permuter(indices)
         return quant_z, indices
@@ -185,21 +210,28 @@ class TransformerModel(BaseModel):
     @torch.no_grad()
     def encode_to_c(self, c, qz_shape=None):
         if self.downsample_cond_size > -1:
-            c = F.interpolate(c, size=(self.downsample_cond_size, self.downsample_cond_size))
-        quant_c, _, [_,_,indices] = self.cond_stage_model.encode(c)
-        if self.raster_type == 'c2c' and len(indices.shape) == 2:
+            c = F.interpolate(
+                c, size=(self.downsample_cond_size, self.downsample_cond_size)
+            )
+        quant_c, _, [_, _, indices] = self.cond_stage_model.encode(c)
+        if self.raster_type == "c2c" and len(indices.shape) == 2:
             indices = indices.repeat_interleave(qz_shape[2], dim=0)
         if len(indices.shape) > 2:
-            indices = indices.view(c.shape[0], -1) if self.raster_type == 'p2p' else indices.view(c.shape[0] * c.shape[2], -1)
+            indices = (
+                indices.view(c.shape[0], -1)
+                if self.raster_type == "p2p"
+                else indices.view(c.shape[0] * c.shape[2], -1)
+            )
         return quant_c, indices
 
     @torch.no_grad()
     def decode_to_img(self, index, zshape):
         if self.permuter is not None:
             index = self.permuter(index, reverse=True)
-        bhwc = (zshape[0],zshape[2],zshape[3],zshape[1])
-        quant_z = self.first_stage_model.quantize.get_codebook_entry\
-            (index.reshape(-1), shape=bhwc)
+        bhwc = (zshape[0], zshape[2], zshape[3], zshape[1])
+        quant_z = self.first_stage_model.quantize.get_codebook_entry(
+            index.reshape(-1), shape=bhwc
+        )
         x = self.first_stage_model.decode(quant_z)
         return x
 
@@ -207,33 +239,42 @@ class TransformerModel(BaseModel):
     def log_images(self, temperature=None, top_k=None, callback=None, **kwargs):
         quant_z, z_indices, c_indices = self.quant_z, self.z_indices, self.c_indices
         z_start_indices = z_indices[:, :0]
-        index_sample = self.sample(z_start_indices, c_indices,
-                                   steps=z_indices.shape[1],
-                                   temperature=temperature if temperature is not None else 1.0,
-                                   sample=True,
-                                   top_k=top_k if top_k is not None else 100,
-                                   callback=callback if callback is not None else lambda k: None)
+        index_sample = self.sample(
+            z_start_indices,
+            c_indices,
+            steps=z_indices.shape[1],
+            temperature=temperature if temperature is not None else 1.0,
+            sample=True,
+            top_k=top_k if top_k is not None else 100,
+            callback=callback if callback is not None else lambda k: None,
+        )
         out_dict, _ = self.decode_to_img(index_sample, quant_z.shape)
         b, _, h, w = quant_z.shape
-        self.rec_z_indices = z_indices.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size
-        self.z_indices = index_sample.reshape(b, 1, h, w)/ self.netTransformer.module.config.vocab_size
-        for k , v in out_dict.items():
-            setattr(self, 'synth_' + k , v)
+        self.rec_z_indices = (
+            z_indices.reshape(b, 1, h, w) / self.netTransformer.module.config.vocab_size
+        )
+        self.z_indices = (
+            index_sample.reshape(b, 1, h, w)
+            / self.netTransformer.module.config.vocab_size
+        )
+        for k, v in out_dict.items():
+            setattr(self, "synth_" + k, v)
 
         # reconstruction
         out_dict, _ = self.decode_to_img(z_indices, quant_z.shape)
-        for k , v in out_dict.items():
-            setattr(self, 'rec_synth_' + k , v)
+        for k, v in out_dict.items():
+            setattr(self, "rec_synth_" + k, v)
 
     @torch.no_grad()
     def validate(self):
-        print('validate')
+        print("validate")
         logits, target = self.forward()
-        loss_t = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+        loss_t = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)), target.reshape(-1)
+        )
         self.val_t = loss_t.item()
         if not self.isTrain:
             self.log_images()
-
 
     def forward(self):
         # one step to produce the logits
@@ -241,11 +282,14 @@ class TransformerModel(BaseModel):
         _, c_indices = self.encode_to_c(self.real_A, quant_z.shape)
         self.quant_z, self.z_indices, self.c_indices = quant_z, z_indices, c_indices
         if self.isTrain and self.pkeep < 1.0:
-            mask = torch.bernoulli(self.pkeep*torch.ones(z_indices.shape,
-                                                         device=z_indices.device))
+            mask = torch.bernoulli(
+                self.pkeep * torch.ones(z_indices.shape, device=z_indices.device)
+            )
             mask = mask.round().to(dtype=torch.int64)
-            r_indices = torch.randint_like(z_indices, self.netTransformer.module.config.vocab_size)
-            a_indices = mask * z_indices+(1-mask)*r_indices
+            r_indices = torch.randint_like(
+                z_indices, self.netTransformer.module.config.vocab_size
+            )
+            a_indices = mask * z_indices + (1 - mask) * r_indices
         else:
             a_indices = z_indices
         cz_indices = torch.cat((c_indices, a_indices), dim=1)
@@ -255,16 +299,18 @@ class TransformerModel(BaseModel):
         # make the prediction
         logits, _ = self.netTransformer(cz_indices[:, :-1])
         # cut off conditioning outputs - output i corresponds to p(z_i | z_{<i}, c)
-        logits = logits[:, c_indices.shape[1]-1:]
+        logits = logits[:, c_indices.shape[1] - 1 :]
 
         return logits, target
-        
+
     def optimize_parameters(self):
-        logits, target = self.forward()            
-        self.optimizer.zero_grad()        # set G's gradients to zero
-        self.loss_t = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
-        self.loss_t.backward()                   # calculate graidents for G
-        self.optimizer.step()             # udpate G's weights
+        logits, target = self.forward()
+        self.optimizer.zero_grad()  # set G's gradients to zero
+        self.loss_t = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)), target.reshape(-1)
+        )
+        self.loss_t.backward()  # calculate graidents for G
+        self.optimizer.step()  # udpate G's weights
         self.global_step += 1
 
     def configure_optimizers(self):
@@ -278,37 +324,50 @@ class TransformerModel(BaseModel):
         # separate out all parameters to those that will and won't experience regularizing weight decay
         decay = set()
         no_decay = set()
-        whitelist_weight_modules = (torch.nn.Linear, )
+        whitelist_weight_modules = (torch.nn.Linear,)
         blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
         for mn, m in self.netTransformer.module.named_modules():
             for pn, p in m.named_parameters():
-                fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
+                fpn = "%s.%s" % (mn, pn) if mn else pn  # full param name
 
-                if pn.endswith('bias'):
+                if pn.endswith("bias"):
                     # all biases will not be decayed
                     no_decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                elif pn.endswith("weight") and isinstance(m, whitelist_weight_modules):
                     # weights of whitelist modules will be weight decayed
                     decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                elif pn.endswith("weight") and isinstance(m, blacklist_weight_modules):
                     # weights of blacklist modules will NOT be weight decayed
                     no_decay.add(fpn)
 
         # special case the position embedding parameter in the root GPT module as not decayed
-        no_decay.add('pos_emb')
+        no_decay.add("pos_emb")
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.netTransformer.module.named_parameters()}
         inter_params = decay & no_decay
         union_params = decay | no_decay
-        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params), )
-        assert len(param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
-                                                    % (str(param_dict.keys() - union_params), )
+        assert (
+            len(inter_params) == 0
+        ), "parameters %s made it into both decay/no_decay sets!" % (str(inter_params),)
+        assert (
+            len(param_dict.keys() - union_params) == 0
+        ), "parameters %s were not separated into either decay/no_decay set!" % (
+            str(param_dict.keys() - union_params),
+        )
 
         # create the pytorch optimizer object
         optim_groups = [
-            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": 0.01},
-            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+            {
+                "params": [param_dict[pn] for pn in sorted(list(decay))],
+                "weight_decay": 0.01,
+            },
+            {
+                "params": [param_dict[pn] for pn in sorted(list(no_decay))],
+                "weight_decay": 0.0,
+            },
         ]
-        optimizer = torch.optim.AdamW(optim_groups, lr=self.learning_rate, betas=(0.9, 0.95))
+        optimizer = torch.optim.AdamW(
+            optim_groups, lr=self.learning_rate, betas=(0.9, 0.95)
+        )
         return optimizer

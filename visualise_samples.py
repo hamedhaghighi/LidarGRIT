@@ -1,3 +1,10 @@
+"""
+Sample Visualization Module - Visualizes generated LiDAR depth maps and point clouds.
+
+This module provides functionality to convert depth maps to 3D point clouds and visualize them
+as images. It supports both synthetic and real data visualization with different output formats.
+"""
+
 # from data import create_dataset
 import argparse
 import os
@@ -18,11 +25,25 @@ from util.lidar import LiDAR
 from util.sampling.fps import downsample_point_clouds
 from util.visualizer import visualize_tensor
 
-os.environ['LD_PRELOAD'] = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6" 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+# Environment setup for compatibility
+os.environ["LD_PRELOAD"] = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 
 def depth_to_xyz(depth, lidar, tol=1e-8, cpu=False):
+    """
+    Convert depth maps to 3D point cloud coordinates.
+    
+    Args:
+        depth: Depth tensor in tanh format
+        lidar: LiDAR configuration object
+        tol: Tolerance for depth conversion
+        cpu: Whether to process on CPU
+    
+    Returns:
+        xyz: Downsampled point cloud coordinates
+        xyz_out: Original point cloud coordinates
+    """
     depth = tanh_to_sigmoid(depth).clamp_(0, 1)
     xyz = lidar.depth_to_xyz(depth, tol)
     xyz_out = xyz.flatten(2)
@@ -33,23 +54,41 @@ def depth_to_xyz(depth, lidar, tol=1e-8, cpu=False):
         xyz = downsample_point_clouds(xyz, 512)
     return xyz, xyz_out
 
+
 def to_np(tensor):
+    """Convert tensor to numpy array on CPU."""
     return tensor.detach().cpu().numpy()
 
+
 class Features10k(torch.utils.data.Dataset):
+    """Dataset class for loading generated samples from .pth files."""
+    
     def __init__(self, root, min_depth, max_depth, lidargen=False):
+        """
+        Initialize the dataset.
+        
+        Args:
+            root: Root directory containing .pth files
+            min_depth: Minimum depth threshold
+            max_depth: Maximum depth threshold
+            lidargen: Whether data is from LiDAR generation
+        """
         self.lidargen = lidargen
         self.min_depth, self.max_depth = min_depth, max_depth
         self.sample_path_list = sorted(Path(root).glob("*.pth"))
+
     def __getitem__(self, index):
+        """Load and preprocess a sample."""
         sample_path = self.sample_path_list[index]
         img = torch.load(sample_path, map_location="cpu")
         if self.lidargen:
             assert img.shape[0] == 2, img.shape
 
         if self.lidargen:
-            img[[0]] = torch.exp2(img[[0]]*6) - 1
+            # Convert from log space to linear space
+            img[[0]] = torch.exp2(img[[0]] * 6) - 1
         depth = img[[0]]
+        # Apply depth mask to filter valid depth values
         mask = torch.logical_and(depth > self.min_depth, depth < self.max_depth).float()
         img = img * mask
         return img.float(), mask.float()
@@ -58,68 +97,140 @@ class Features10k(torch.utils.data.Dataset):
         return len(self.sample_path_list)
 
 
-
 def main(runner_cfg_path=None):
+    """Main function for sample visualization."""
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='', help='Path of the config file')
-    parser.add_argument('--sample_dir', type=str, default='', help='Path of the sample dir')
-    parser.add_argument('--data_dir', type=str, default='', help='Path of the sample dir')
-    parser.add_argument('--ref_dataset_name', type=str, default='kitti_360', help='Path of the sample dir')
-    parser.add_argument('--fast_test', action='store_true', help='fast test of experiment')
-    parser.add_argument('--lidargen', action='store_true', help='fast test of experiment')
-    parser.add_argument('--on_real', action='store_true', help='fast test of experiment')
-    parser.add_argument('--depth', action='store_true', help='fast test of experiment')
+    parser.add_argument("--cfg", type=str, default="", help="Path of the config file")
+    parser.add_argument(
+        "--sample_dir", type=str, default="", help="Path of the sample dir"
+    )
+    parser.add_argument(
+        "--data_dir", type=str, default="", help="Path of the sample dir"
+    )
+    parser.add_argument(
+        "--ref_dataset_name",
+        type=str,
+        default="kitti_360",
+        help="Path of the sample dir",
+    )
+    parser.add_argument(
+        "--fast_test", action="store_true", help="fast test of experiment"
+    )
+    parser.add_argument(
+        "--lidargen", action="store_true", help="fast test of experiment"
+    )
+    parser.add_argument(
+        "--on_real", action="store_true", help="fast test of experiment"
+    )
+    parser.add_argument("--depth", action="store_true", help="fast test of experiment")
 
     cl_args = parser.parse_args()
+    
+    # Set random seeds for reproducibility
     torch.manual_seed(0)
     np.random.seed(0)
     random.seed(0)
-    min_depth, max_depth = 0.9 if cl_args.ref_dataset_name == 'kitti' else 1.45, 120.0 if cl_args.ref_dataset_name == 'kitti' else 80.0
-    device = torch.device('cpu')
+    
+    # Set depth thresholds based on dataset
+    min_depth, max_depth = 0.9 if cl_args.ref_dataset_name == "kitti" else 1.45, (
+        120.0 if cl_args.ref_dataset_name == "kitti" else 80.0
+    )
+    device = torch.device("cpu")
     data_dict = defaultdict(list)
     data_dict = torch.load(cl_args.data_dir, map_location=device)
-    print('data_dict loaded ...')
-    ds_cfg = make_class_from_dict(yaml.safe_load(open(f'configs/dataset_cfg/{cl_args.ref_dataset_name}_cfg.yml', 'r')))
+    print("data_dict loaded ...")
+    
+    # Load dataset configuration
+    ds_cfg = make_class_from_dict(
+        yaml.safe_load(
+            open(f"configs/dataset_cfg/{cl_args.ref_dataset_name}_cfg.yml", "r")
+        )
+    )
     ds_cfg.min_depth, ds_cfg.max_depth = min_depth, max_depth
+    
     #### Train & Validation Loop
     # Train loop
-    data_dict['synth-2d'] = [] 
-    data_dict['synth-3d'] = []
+    data_dict["synth-2d"] = []
+    data_dict["synth-3d"] = []
     # fid_samples = [] if fid_cls is not None else None
-    h = 64 
-    w = 1024 if cl_args.ref_dataset_name == 'kitti_360' else 256
+    
+    # Set LiDAR parameters
+    h = 64
+    w = 1024 if cl_args.ref_dataset_name == "kitti_360" else 256
     lidar = LiDAR(cfg=ds_cfg, height=h, width=w).to(device)
+    
+    # Setup output directory
     sample_folder = cl_args.sample_dir.split(os.path.sep)[-1]
-    if sample_folder == '': 
+    if sample_folder == "":
         sample_folder = cl_args.sample_dir.split(os.path.sep)[-2]
     if cl_args.on_real:
-        save_dir = cl_args.sample_dir.replace(sample_folder, 'real_visualised_depth' if cl_args.depth else 'real_visualised_xyz')
+        save_dir = cl_args.sample_dir.replace(
+            sample_folder,
+            "real_visualised_depth" if cl_args.depth else "real_visualised_xyz",
+        )
     else:
-        save_dir = cl_args.sample_dir.replace(sample_folder, f'{sample_folder}_visualised_depth' if cl_args.depth else f'{sample_folder}_visualised_xyz')
+        save_dir = cl_args.sample_dir.replace(
+            sample_folder,
+            (
+                f"{sample_folder}_visualised_depth"
+                if cl_args.depth
+                else f"{sample_folder}_visualised_xyz"
+            ),
+        )
 
     os.makedirs(save_dir, exist_ok=True)
+    
+    # Create dataset and data loader
     dataset = Features10k(cl_args.sample_dir, min_depth, max_depth, cl_args.lidargen)
-    gen_loader = DataLoader(dataset, batch_size=8, num_workers=4, shuffle=True, drop_last=False)
-    N = 512 if cl_args.fast_test else  min(len(data_dict['real-2d']) * 8, 5000, len(dataset))
+    gen_loader = DataLoader(
+        dataset, batch_size=8, num_workers=4, shuffle=True, drop_last=False
+    )
+    
+    # Determine number of samples to process
+    N = (
+        512
+        if cl_args.fast_test
+        else min(len(data_dict["real-2d"]) * 8, 5000, len(dataset))
+    )
     gen_loader_iter = iter(gen_loader)
-    n_gen_batch = N//8 if cl_args.fast_test else  len(gen_loader) 
-    gen_tq = tqdm.tqdm(total=n_gen_batch, desc='Iterating gen data', position=0, leave=True)
+    n_gen_batch = N // 8 if cl_args.fast_test else len(gen_loader)
+    gen_tq = tqdm.tqdm(
+        total=n_gen_batch, desc="Iterating gen data", position=0, leave=True
+    )
     index = 0
+    
+    # Visualization loop
     if cl_args.on_real:
+        # Visualize real data
         for j in tqdm.tqdm(range(n_gen_batch)):
-            real_depth = data_dict['real-2d'][j]
+            real_depth = data_dict["real-2d"][j]
             if cl_args.depth:
+                # Save depth maps as images
                 for i in range(len(real_depth)):
-                    plt.imsave(osp.join(save_dir, f'depth_{index}.png'), ((np.asarray((real_depth[i] + 1)/2.0)[0])*2.5).clip(0.0, 1.0), cmap='turbo')
+                    plt.imsave(
+                        osp.join(save_dir, f"depth_{index}.png"),
+                        ((np.asarray((real_depth[i] + 1) / 2.0)[0]) * 2.5).clip(
+                            0.0, 1.0
+                        ),
+                        cmap="turbo",
+                    )
                     index += 1
             else:
-                _ , xyz_norm = depth_to_xyz(real_depth, lidar, cpu=True)
+                # Convert depth to point cloud and visualize
+                _, xyz_norm = depth_to_xyz(real_depth, lidar, cpu=True)
                 for i in range(len(xyz_norm)):
-                    _, pts_img = visualize_tensor(to_np(xyz_norm.transpose(1, 2)[i]), (to_np((real_depth[i] + 1)/2)*2.5).clip(0.0, 1.0), 'point', cl_args.ref_dataset_name)
-                    plt.imsave(osp.join(save_dir, f'point_{index}.png'), np.asarray(pts_img))
+                    _, pts_img = visualize_tensor(
+                        to_np(xyz_norm.transpose(1, 2)[i]),
+                        (to_np((real_depth[i] + 1) / 2) * 2.5).clip(0.0, 1.0),
+                        "point",
+                        cl_args.ref_dataset_name,
+                    )
+                    plt.imsave(
+                        osp.join(save_dir, f"point_{index}.png"), np.asarray(pts_img)
+                    )
                     index += 1
     else:
-            
+        # Visualize synthetic data
         for _ in range(n_gen_batch):
             img, mask = next(gen_loader_iter)
             img = img.to(device)
@@ -128,23 +239,33 @@ def main(runner_cfg_path=None):
             synth_depth = synth_depth * mask
 
             if cl_args.depth:
-
+                # Save synthetic depth maps as images
                 for i in range(len(synth_depth)):
-                    plt.imsave(osp.join(save_dir, f'depth_{index}.png'), (np.asarray((synth_depth[i][0]))*2.5).clip(0.0, 1.0), cmap='turbo')
+                    plt.imsave(
+                        osp.join(save_dir, f"depth_{index}.png"),
+                        (np.asarray((synth_depth[i][0])) * 2.5).clip(0.0, 1.0),
+                        cmap="turbo",
+                    )
                     index += 1
-            else:   
+            else:
+                # Convert synthetic depth to point cloud and visualize
                 synth_depth = synth_depth * 2 - 1
-                _ , xyz_norm = depth_to_xyz(synth_depth, lidar, cpu=True)
+                _, xyz_norm = depth_to_xyz(synth_depth, lidar, cpu=True)
                 for i in range(len(xyz_norm)):
-                    _, pts_img = visualize_tensor(to_np(xyz_norm.transpose(1, 2)[i]), (to_np((synth_depth[i] + 1)/2)*2.5).clip(0.0, 1.0), 'point', cl_args.ref_dataset_name)
-                    plt.imsave(osp.join(save_dir, f'point_{index}.png'), np.asarray(pts_img))
+                    _, pts_img = visualize_tensor(
+                        to_np(xyz_norm.transpose(1, 2)[i]),
+                        (to_np((synth_depth[i] + 1) / 2) * 2.5).clip(0.0, 1.0),
+                        "point",
+                        cl_args.ref_dataset_name,
+                    )
+                    plt.imsave(
+                        osp.join(save_dir, f"point_{index}.png"), np.asarray(pts_img)
+                    )
                     index += 1
-    
+
             gen_tq.update(1)
     ##### calculating unsupervised metrics
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-    
- 
