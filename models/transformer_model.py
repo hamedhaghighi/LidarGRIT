@@ -56,7 +56,7 @@ class TransformerModel(BaseModel):
 
         if 'reflectance' in opt_m.modality_B:
             self.visual_names.extend(['real_reflectance', 'synth_reflectance'])
-            self.eval_metrics.append('reflectance_errors')
+            # self.eval_metrics.append('reflectance_errors')
         self.visual_names.extend(['z_indices', 'rec_z_indices'])
         
         # same_kernel_size = opt.dataset.dataset_A.img_prop.width == opt.dataset.dataset_A.img_prop.height

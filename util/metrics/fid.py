@@ -20,7 +20,7 @@ class FID():
     self.batch_size = batch_size
     ds = train_dataset
     n_samples = min(max_sample, len(train_dataset))
-    stat_dir = os.path.join('stats, fid_stats', f'fid_{dataset_name}.pkl')
+    stat_dir = os.path.join('stats', 'fid_stats', f'fid_{dataset_name}.pkl')
     # parameters
     self.lidar = lidar 
     # concatenate the encoder and the head

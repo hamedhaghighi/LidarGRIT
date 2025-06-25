@@ -1,4 +1,4 @@
-data_dir: '/localstore/LocalUsers/haghig_h/KITTI/projected/'
+data_dir: '/home/ivsensors/haghig_h/datasets/KITTI/projected/'
 # data_dir: '/media/haghig_h/Extreme SSD/KITTI/projected'
 min_depth: 0.9
 max_depth: 120.0

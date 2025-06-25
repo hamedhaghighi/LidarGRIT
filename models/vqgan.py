@@ -85,8 +85,8 @@ class VQModel(nn.Module):
     def training_step(self, real_A, fake_B, optimizer_idx, global_step, aug_cls, qloss=None, lidar=None, mask_logits=None, real_mask=None):
 
         if optimizer_idx == 0:
-            points_input = lidar.depth_to_xyz(tanh_to_sigmoid(real_A))
-            points_rec = lidar.depth_to_xyz(tanh_to_sigmoid(fake_B))
+            points_input = lidar.depth_to_xyz(tanh_to_sigmoid(real_A if real_A.shape[1] == 1 else real_A[:, 0:1]))
+            points_rec = lidar.depth_to_xyz(tanh_to_sigmoid(fake_B if fake_B.shape[1] == 1 else fake_B[:, 0:1]))
             # autoencode
             aeloss, log_dict_ae = self.loss(qloss, real_A, fake_B, optimizer_idx, global_step,
                                             aug_cls, last_layer=self.get_last_layer(), split="train",\

@@ -7,7 +7,7 @@ training:
   batch_size: 16
   test: False
   gpu_ids: [0]
-  checkpoints_dir: './checkpoints_trans_kitti_360'
+  checkpoints_dir: 'checkpoints_trans_kitti_360'
   epoch: 'best'
   continue_train: False
   display_freq: 20000
@@ -16,7 +16,7 @@ training:
   verbose: False
   suffix : ''
   seed: 6
-  lr_policy: 'linear'
+  lr_policy: 'identity'
   lr_decay_iters: 10000000
   beta1: 0.5
 
@@ -25,7 +25,7 @@ model:
   name: 'transformer'
   norm_label: False
   raster_type: 'p2p'
-  vq_ckpt_path: checkpoints_kitti_360/392c99fc9c0e19000f7fbce6bbe69edb9263d0668bd5d60b37d0f2a9621598f0/best.pth
+  vq_ckpt_path: checkpoints_kitti_360/0073c213a2bdc0ad0befb7fbbcaff0921032a225b6b6ed2bab798185e328cf3c/best.pth
   transformer_config:
     n_layer: 12
     n_head: 8
@@ -33,6 +33,7 @@ model:
     embd_pdrop: 0.0
     resid_pdrop: 0.0
     attn_pdrop: 0.0
+
   cond_stage_config:
     target: models.modules.misc.coord.CoordStage
     params:
@@ -45,7 +46,7 @@ model:
 dataset:
   dataset_A:
     name: 'kitti_360'
-    modality: ['depth']
+    modality: ['depth', 'reflectance']
     fill_in_label: True
     do_gp: False
     img_prop:

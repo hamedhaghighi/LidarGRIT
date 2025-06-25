@@ -7,7 +7,7 @@ training:
   batch_size: 8
   test: False
   gpu_ids: [0]
-  checkpoints_dir: './search_checkpoints'
+  checkpoints_dir: './new_checkpoints'
   epoch: 'latest'
   continue_train: False
   display_freq: 20000
@@ -47,7 +47,7 @@ model:
     lossconfig:
       target: models.modules.losses.vqperceptual.VQLPIPSWithDiscriminator
       params:
-        lambda_mask: 0.0001
+        lambda_mask: 0.1
         perceptual_weight: 0.0
         disc_conditional: False
         disc_in_channels: 1

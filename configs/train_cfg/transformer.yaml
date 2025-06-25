@@ -4,7 +4,7 @@
 training:
   n_epochs: 100
   lr: 4.5e-6
-  batch_size: 1
+  batch_size: 16
   test: False
   gpu_ids: [0]
   checkpoints_dir: './new_checkpoints_trans'
@@ -20,12 +20,13 @@ training:
   lr_decay_iters: 10000000
   beta1: 0.5
 
+ 
 # model params
 model:
   name: 'transformer'
   norm_label: False
   raster_type: 'p2p'
-  vq_ckpt_path: ./checkpoints/d53e32e5e14b6a4b997746f8e0bd480367fefe955c0097d40322835a342d82f8/best.pth
+  vq_ckpt_path: ./new_checkpoints/SOTA/best.pth
   transformer_config:
     n_layer: 6
     n_head: 8
@@ -39,8 +40,6 @@ model:
       n_embed: 1024
       down_factor: 16
 
-
-
 # dataset params
 dataset:
   dataset_A:
@@ -52,3 +51,4 @@ dataset:
       width: 256
       height: 64
       finesize: -1
+

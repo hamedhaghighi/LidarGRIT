@@ -206,8 +206,7 @@ def main(runner_cfg_path=None):
     train_dl_iter = iter(train_dl); 
     data = next(train_dl_iter)
     model.setup(opt.training)
-    fid_cls = FID(seg_model, test_dataset, cl_args.ref_dataset_name, lidar_A) \
-        if (cl_args.ref_dataset_name!= '' and 'reflectance' in opt.model.modality_B) else None
+    fid_cls = None
     fpd_cls = FPD(test_dataset, cl_args.ref_dataset_name, lidar_A, max_sample=cl_args.num_samples) if cl_args.ref_dataset_name!= '' else None
     n_test_batch = 2 if cl_args.fast_test else  len(test_dl)
     test_dl_iter = iter(test_dl)
@@ -396,6 +395,7 @@ def main(runner_cfg_path=None):
                     data_dict[k] = torch.cat(v, dim=0)[: N]
             scores = {}
             n_subsample = 5000
+            n_subsample = min(min(n_subsample, len(data_dict["synth-2d"])), len(data_dict["real-2d"]))
             scores.update(compute_swd(subsample(data_dict["synth-2d"], n_subsample), subsample(data_dict["real-2d"], n_subsample)))
             scores["jsd"] = compute_jsd(subsample(data_dict["synth-3d"], n_subsample) / 2.0, subsample(data_dict["real-3d"], n_subsample) / 2.0)
             scores.update(compute_cov_mmd_1nna(subsample(data_dict["synth-3d"], n_subsample), subsample(data_dict["real-3d"], n_subsample), 512, ("cd",)))

@@ -166,6 +166,7 @@ def main(runner_cfg_path=None):
         if isinstance(v, list):
             data_dict[k] = torch.cat(v, dim=0)[: N]
     n_subsample = 5000 if cl_args.ref_dataset_name == 'kitti' else 5000
+    n_subsample = min(min(n_subsample, len(data_dict["synth-2d"])), len(data_dict["real-2d"]))
     if cl_args.fpd:
         fpd_score = fpd_cls.fpd_score(torch.cat(fpd_points, dim=0))
         print(f'fpd: {fpd_score}')
